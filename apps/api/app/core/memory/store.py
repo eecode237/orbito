@@ -42,6 +42,7 @@ def build_system_prompt(
     memory: str,
     tool_context: str,
     approvals: list[str],
+    workspace_context: str = "",
 ) -> str:
     parts = [
         "You are ORBITO — the user's personal AI operating system.",
@@ -54,6 +55,12 @@ def build_system_prompt(
         parts += ["", "What you remember about this user:", memory]
     if tool_context:
         parts += ["", "Live tool output for this request:", tool_context]
+    if workspace_context:
+        parts += [
+            "",
+            "Files the user attached from the workspace (read-only context):",
+            workspace_context,
+        ]
     if approvals:
         parts += [
             "",

@@ -6,6 +6,7 @@ Nothing in the codebase should read os.environ directly — import `settings`.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -76,6 +77,12 @@ class Settings(BaseSettings):
     model_max_tokens: int = 2048
     allow_mock_fallback: bool = True
 
+    # --- workspace / current work ------------------------------------------
+    # Paths shown in the workspace explorer. Empty means the ORBITO repo.
+    # Separate multiple roots with the OS path separator (`:` on Linux).
+    workspace_roots: str = ""
+    workspace_max_file_bytes: int = 200_000
+
     # --- system monitor / alerts -------------------------------------------
     alert_memory_percent: int = 90
     alert_memory_critical_percent: int = 96
@@ -127,6 +134,17 @@ class Settings(BaseSettings):
             domain.strip().lower()
             for domain in self.scraping_allowed_domains.split(",")
             if domain.strip()
+        ]
+
+    @property
+    def workspace_paths(self) -> list[Path]:
+        raw = self.workspace_roots.strip()
+        if not raw:
+            return [REPO_ROOT]
+        return [
+            Path(item).expanduser().resolve()
+            for item in raw.split(os.pathsep)
+            if item.strip()
         ]
 
     @property

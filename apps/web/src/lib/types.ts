@@ -254,3 +254,61 @@ export type SystemAlerts = {
   alerts: SystemAlert[];
   generated_at: string;
 };
+
+export type WorkspaceRoot = {
+  name: string;
+  path: string;
+  exists: boolean;
+  files: number;
+  size_bytes: number;
+  updated_at?: string | null;
+};
+
+export type WorkspaceOverview = {
+  roots: WorkspaceRoot[];
+  default: string | null;
+};
+
+export type WorkspaceEntry = {
+  name: string;
+  path: string;
+  type: "dir" | "file";
+  size: number;
+  language?: string | null;
+  sensitive: boolean;
+  modified_at: string;
+};
+
+export type WorkspaceTree = {
+  root: string;
+  path: string;
+  parent: string | null;
+  entries: WorkspaceEntry[];
+};
+
+export type WorkspaceFile = {
+  root: string;
+  path: string;
+  name: string;
+  language?: string | null;
+  size_bytes: number;
+  modified_at: string;
+  truncated: boolean;
+  content: string;
+  lines: number;
+};
+
+export type WorkspaceMatch = {
+  path: string;
+  line: number;
+  text: string;
+  language?: string | null;
+};
+
+export type WorkspaceSearch = {
+  root: string;
+  query: string;
+  matches: WorkspaceMatch[];
+  scanned: number;
+  limit_reached: boolean;
+};

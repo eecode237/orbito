@@ -13,6 +13,8 @@ class ChatRequest(BaseModel):
     agent: str | None = "auto"
     model_role: str | None = None
     workspace_id: str | None = None
+    # Optional attached file context from the workspace explorer.
+    context: str | None = Field(default=None, max_length=60_000)
     stream: bool = True
 
     @field_validator("message")

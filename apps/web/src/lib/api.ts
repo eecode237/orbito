@@ -12,6 +12,10 @@ import type {
   SystemStats,
   TaskSummary,
   UsageSummary,
+  WorkspaceFile,
+  WorkspaceOverview,
+  WorkspaceSearch,
+  WorkspaceTree,
 } from "@/lib/types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -210,4 +214,36 @@ export async function getSystemStats(): Promise<SystemStats> {
 
 export async function getSystemAlerts(): Promise<SystemAlerts> {
   return apiGet("/api/v1/system/alerts");
+}
+
+export async function getWorkspaces(): Promise<WorkspaceOverview> {
+  return apiGet("/api/v1/workspaces");
+}
+
+export async function getWorkspaceTree(
+  root?: string | null,
+  path = "",
+): Promise<WorkspaceTree> {
+  const params = new URLSearchParams({ path });
+  if (root) params.set("root", root);
+  return apiGet(`/api/v1/workspaces/tree?${params.toString()}`);
+}
+
+export async function getWorkspaceFile(
+  path: string,
+  root?: string | null,
+): Promise<WorkspaceFile> {
+  const params = new URLSearchParams({ path });
+  if (root) params.set("root", root);
+  return apiGet(`/api/v1/workspaces/file?${params.toString()}`);
+}
+
+export async function searchWorkspace(
+  query: string,
+  root?: string | null,
+  limit = 40,
+): Promise<WorkspaceSearch> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  if (root) params.set("root", root);
+  return apiGet(`/api/v1/workspaces/search?${params.toString()}`);
 }

@@ -13,6 +13,7 @@ from app.api.v1 import (
     scraping,
     system,
     tasks,
+    workspaces,
 )
 
 api_router = APIRouter()
@@ -21,6 +22,7 @@ api_router.include_router(chat.router)
 api_router.include_router(catalog.router)
 api_router.include_router(model_hub.router)
 api_router.include_router(system.router)
+api_router.include_router(workspaces.router)
 api_router.include_router(tasks.router)
 api_router.include_router(conversations.router)
 api_router.include_router(memory.router)

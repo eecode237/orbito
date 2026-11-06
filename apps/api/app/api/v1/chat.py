@@ -59,6 +59,7 @@ async def chat(payload: ChatRequest):
         model_role=payload.model_role,
         history=history,
         workspace_id=payload.workspace_id,
+        context=payload.context,
     )
 
     if not payload.stream:

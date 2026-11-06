@@ -39,6 +39,7 @@ class OrchestratorRequest:
     model_role: str | None = None
     history: list[GatewayMessage] = field(default_factory=list)
     workspace_id: str | None = None
+    context: str | None = None
 
 
 class Orchestrator:
@@ -140,6 +141,7 @@ class Orchestrator:
                 memory=memory,
                 tool_context=tool_context,
                 approvals=agent.approval_required,
+                workspace_context=request.context or "",
             )
 
             messages = list(request.history)

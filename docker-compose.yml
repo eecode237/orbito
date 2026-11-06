@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: orbito-postgres
+    environment:
+      POSTGRES_USER: orbito
+      POSTGRES_PASSWORD: orbito
+      POSTGRES_DB: orbito
+    ports:
+      - "5432:5432"
+    volumes:
+      - orbito_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orbito -d orbito"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: orbito-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - orbito_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: orbito-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: orbito
+      MINIO_ROOT_PASSWORD: orbito-dev-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - orbito_miniodata:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api.Dockerfile
+    container_name: orbito-api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://orbito:orbito@postgres:5432/orbito
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+      - orbito_uploads:/app/.data/uploads
+
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/web.Dockerfile
+    container_name: orbito-web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  orbito_pgdata:
+  orbito_redisdata:
+  orbito_miniodata:
+  orbito_uploads:

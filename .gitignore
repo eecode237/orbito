@@ -1,0 +1,42 @@
+# --- Node ---
+node_modules/
+.pnpm-store/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# --- Data / runtime ---
+.data/
+*.db
+*.db-journal
+*.sqlite3
+logs/
+uploads/
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Tooling ---
+.DS_Store
+.idea/
+.vscode/
+*.log

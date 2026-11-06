@@ -1,0 +1,17 @@
+{
+  "name": "orbito",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ORBITO — your personal AI operating system. One agent. Infinite possibilities.",
+  "packageManager": "pnpm@11.0.9",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @orbito/web dev",
+    "build": "pnpm --filter @orbito/web build",
+    "lint": "pnpm --filter @orbito/web lint",
+    "typecheck": "pnpm --filter @orbito/web typecheck",
+    "api": "cd apps/api && .venv/bin/uvicorn app.main:app --reload --port 8000"
+  }
+}

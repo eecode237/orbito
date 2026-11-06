@@ -1,0 +1,60 @@
+roles:
+  fast:
+    provider: google
+    model: gemini-2.5-flash
+    label: Gemini 2.5 Flash
+    context_window: 1000000
+    input_cost: 0.30
+    output_cost: 2.50
+    vision: true
+  smart:
+    provider: openai
+    model: gpt-4.1-mini
+    label: GPT-4.1 mini
+    context_window: 1000000
+    input_cost: 0.40
+    output_cost: 1.60
+    vision: true
+  reasoning:
+    provider: anthropic
+    model: claude-sonnet-4-5
+    label: Claude Sonnet 4.5
+    context_window: 200000
+    input_cost: 3.00
+    output_cost: 15.00
+    reasoning: true
+  coding:
+    provider: anthropic
+    model: claude-sonnet-4-5
+    label: Claude Sonnet 4.5
+    context_window: 200000
+    input_cost: 3.00
+    output_cost: 15.00
+    reasoning: true
+  vision:
+    provider: google
+    model: gemini-2.5-flash
+    label: Gemini 2.5 Flash
+    context_window: 1000000
+    input_cost: 0.30
+    output_cost: 2.50
+    vision: true
+  local:
+    provider: ollama
+    model: llama3.2
+    label: Ollama (local)
+    context_window: 128000
+    local: true
+  mock:
+    provider: mock
+    model: orbito-fast
+    label: ORBITO Fast (offline)
+    context_window: 32000
+
+fallbacks:
+  fast: [smart, local, mock]
+  smart: [fast, local, mock]
+  reasoning: [smart, fast, mock]
+  coding: [reasoning, smart, mock]
+  vision: [fast, smart, mock]
+  local: [mock]

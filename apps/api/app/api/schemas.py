@@ -61,3 +61,9 @@ class ApprovalRequest(BaseModel):
     step_index: int | None = None
     approved: bool = True
     note: str | None = None
+
+
+class PullRequest(BaseModel):
+    """Request a model download from the local Ollama registry."""
+
+    name: str = Field(min_length=1, max_length=128)

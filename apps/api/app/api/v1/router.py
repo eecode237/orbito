@@ -2,12 +2,25 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import catalog, chat, conversations, files, health, memory, scraping, tasks
+from app.api.v1 import (
+    catalog,
+    chat,
+    conversations,
+    files,
+    health,
+    memory,
+    model_hub,
+    scraping,
+    system,
+    tasks,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(chat.router)
 api_router.include_router(catalog.router)
+api_router.include_router(model_hub.router)
+api_router.include_router(system.router)
 api_router.include_router(tasks.router)
 api_router.include_router(conversations.router)
 api_router.include_router(memory.router)

@@ -7,29 +7,19 @@ Set `"stream": false` for a single JSON response.
 
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncIterator
-from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import ChatRequest, ChatResponse
+from app.api.sse import SSE_HEADERS, sse
 from app.core.model_gateway import Message as GatewayMessage
 from app.core.orchestrator import OrchestratorRequest, orchestrator
 from app.db import repositories as repo
 
 router = APIRouter(tags=["chat"])
 
-SSE_HEADERS = {
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
-    "X-Accel-Buffering": "no",
-}
-
-
-def sse(event: dict[str, Any]) -> str:
-    return f"event: {event.get('type', 'message')}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
 async def _history(conversation_id: str | None) -> list[GatewayMessage]:

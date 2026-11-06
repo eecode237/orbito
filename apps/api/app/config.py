@@ -48,7 +48,13 @@ class Settings(BaseSettings):
     mistral_api_key: str | None = None
     mistral_base_url: str = "https://api.mistral.ai/v1"
     ollama_base_url: str = "http://localhost:11434"
-    ollama_enabled: bool = False
+    ollama_enabled: bool = True
+    # Context is a per-request memory budget. 8k keeps a 4B model near 4 GB;
+    # raise it only when a task needs long documents.
+    ollama_context_length: int = 8192
+    # Thinking roughly triples latency on a CPU-only laptop. Enable per model
+    # when quality matters more than speed.
+    ollama_think: bool = False
 
     # --- tools -------------------------------------------------------------
     tavily_api_key: str | None = None
@@ -69,6 +75,17 @@ class Settings(BaseSettings):
     model_temperature: float = 0.4
     model_max_tokens: int = 2048
     allow_mock_fallback: bool = True
+
+    # --- system monitor / alerts -------------------------------------------
+    alert_memory_percent: int = 90
+    alert_memory_critical_percent: int = 96
+    alert_swap_percent: int = 80
+    alert_disk_percent: int = 85
+    alert_disk_critical_percent: int = 95
+    alert_cpu_percent: int = 92
+    alert_temperature_c: int = 80
+    alert_temperature_critical_c: int = 92
+    alert_battery_percent: int = 20
 
     # --- scraping ----------------------------------------------------------
     scraping_max_pages: int = 100

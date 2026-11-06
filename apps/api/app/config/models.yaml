@@ -1,49 +1,39 @@
 roles:
   fast:
-    provider: google
-    model: gemini-2.5-flash
-    label: Gemini 2.5 Flash
-    context_window: 1000000
-    input_cost: 0.30
-    output_cost: 2.50
-    vision: true
+    provider: ollama
+    model: qwen3.5:4b
+    label: Qwen3.5 4B (local)
+    context_window: 8192
+    local: true
   smart:
-    provider: openai
-    model: gpt-4.1-mini
-    label: GPT-4.1 mini
-    context_window: 1000000
-    input_cost: 0.40
-    output_cost: 1.60
-    vision: true
+    provider: ollama
+    model: qwen3.5:4b
+    label: Qwen3.5 4B (local)
+    context_window: 8192
+    local: true
   reasoning:
-    provider: anthropic
-    model: claude-sonnet-4-5
-    label: Claude Sonnet 4.5
-    context_window: 200000
-    input_cost: 3.00
-    output_cost: 15.00
-    reasoning: true
+    provider: ollama
+    model: qwen3.5:4b
+    label: Qwen3.5 4B (local)
+    context_window: 8192
+    local: true
   coding:
-    provider: anthropic
-    model: claude-sonnet-4-5
-    label: Claude Sonnet 4.5
-    context_window: 200000
-    input_cost: 3.00
-    output_cost: 15.00
-    reasoning: true
+    provider: ollama
+    model: qwen3.5:4b
+    label: Qwen3.5 4B (local)
+    context_window: 8192
+    local: true
   vision:
-    provider: google
-    model: gemini-2.5-flash
-    label: Gemini 2.5 Flash
-    context_window: 1000000
-    input_cost: 0.30
-    output_cost: 2.50
-    vision: true
+    provider: ollama
+    model: qwen3.5:4b
+    label: Qwen3.5 4B (local)
+    context_window: 8192
+    local: true
   local:
     provider: ollama
-    model: llama3.2
-    label: Ollama (local)
-    context_window: 128000
+    model: qwen3.5:4b
+    label: Qwen3.5 4B (local)
+    context_window: 8192
     local: true
   mock:
     provider: mock
@@ -51,10 +41,14 @@ roles:
     label: ORBITO Fast (offline)
     context_window: 32000
 
+# Local-first: every role resolves to Ollama, then the deterministic mock.
+# Pull another model and edit the role (or override its model name with
+# ORBITO_*_MODEL) to upgrade a single capability. Add cloud roles under
+# `roles:` when you have keys — the gateway skips unconfigured providers.
 fallbacks:
-  fast: [smart, local, mock]
+  fast: [local, mock]
   smart: [fast, local, mock]
   reasoning: [smart, fast, mock]
-  coding: [reasoning, smart, mock]
-  vision: [fast, smart, mock]
+  coding: [smart, fast, mock]
+  vision: [fast, mock]
   local: [mock]

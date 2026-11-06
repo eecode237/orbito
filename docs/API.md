@@ -17,11 +17,39 @@ Do not expose this build publicly before Phase 1.
 |---|---|---|
 | GET | `/health` | App/database/provider readiness |
 | GET | `/system/tools` | Registered tools and permission levels |
+| GET | `/system/stats` | Live CPU, memory, swap, disk, temperature, battery, Ollama |
+| GET | `/system/alerts` | Threshold alerts derived from the latest snapshot |
 | GET | `/usage` | Aggregate requests, tokens, estimated cost |
 
 ```bash
 curl localhost:8000/api/v1/health
+curl localhost:8000/api/v1/system/stats
 ```
+
+`/system/stats` is sampled from `/proc` and `/sys` (no `psutil` dependency) and
+cached for one second so several dashboard tabs do not each wake the machine.
+Alert thresholds are environment settings (`ALERT_MEMORY_PERCENT`,
+`ALERT_DISK_PERCENT`, `ALERT_TEMPERATURE_C`, and so on). Levels are `warning`
+or `critical`; a healthy machine returns an empty list.
+
+## Model Hub
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/model-hub/overview` | Ollama status, installed/running models, hardware, suggestions |
+| GET | `/model-hub/hardware` | CPU, memory, GPUs, disk |
+| GET | `/model-hub/models/show?name=` | Model capabilities and context length |
+| POST | `/model-hub/pull` | Download a model; returns SSE progress |
+| DELETE | `/model-hub/models?name=` | Delete an installed model |
+
+```bash
+curl localhost:8000/api/v1/model-hub/overview
+curl -N -X POST localhost:8000/api/v1/model-hub/pull \
+  -H 'Content-Type: application/json' -d '{"name":"qwen3.5:4b"}'
+```
+
+Unlike chat, Model Hub endpoints work even when `OLLAMA_ENABLED=false`: they
+report the server as offline instead of hiding it.
 
 ## Chat
 

@@ -137,3 +137,120 @@ export type ChatMessage = {
   sources?: Source[];
   pending?: boolean;
 };
+
+export type LocalModel = {
+  name: string;
+  size: number;
+  digest?: string | null;
+  modified_at?: string | null;
+  family?: string | null;
+  parameter_size?: string | null;
+  quantization?: string | null;
+  format?: string | null;
+};
+
+export type RunningModel = LocalModel & {
+  size_vram: number;
+  processor: "gpu" | "partial" | "cpu";
+  expires_at?: string | null;
+  context_length?: number | null;
+};
+
+export type HardwareInfo = {
+  platform: string;
+  cpu_model?: string | null;
+  cpu_threads?: number | null;
+  memory_total_bytes: number;
+  memory_available_bytes: number;
+  gpus: { name: string }[];
+  disk: { path: string; total_bytes: number; free_bytes: number };
+};
+
+export type ModelSuggestion = {
+  name: string;
+  role: string;
+  note: string;
+  installed: boolean;
+};
+
+export type ModelHubOverview = {
+  ollama: {
+    reachable: boolean;
+    version?: string | null;
+    base_url: string;
+    error?: string | null;
+  };
+  installed: LocalModel[];
+  running: RunningModel[];
+  hardware: HardwareInfo;
+  suggestions: ModelSuggestion[];
+  enabled: boolean;
+};
+
+export type PullEvent =
+  | {
+      type: "progress";
+      model: string;
+      status: string;
+      digest?: string | null;
+      total: number;
+      completed: number;
+      percent: number | null;
+    }
+  | { type: "done"; model: string }
+  | { type: "error"; model: string; error: string };
+
+export type SystemAlert = {
+  id: string;
+  level: "critical" | "warning" | "info";
+  title: string;
+  detail: string;
+  value: string;
+  href?: string | null;
+};
+
+export type SystemStats = {
+  timestamp: string;
+  platform: string;
+  uptime_seconds: number;
+  cpu: {
+    percent: number;
+    per_core: number[];
+    cores: number;
+    model?: string | null;
+    load?: { one: number; five: number; fifteen: number } | null;
+  };
+  memory: {
+    total_bytes: number;
+    available_bytes: number;
+    used_bytes: number;
+    percent: number;
+    swap_total_bytes: number;
+    swap_used_bytes: number;
+    swap_percent: number;
+  };
+  disk: {
+    path: string;
+    total_bytes: number;
+    used_bytes: number;
+    free_bytes: number;
+    percent: number;
+  };
+  temperature_c?: number | null;
+  battery?: {
+    percent: number;
+    status: string;
+    plugged: boolean;
+  } | null;
+  ollama: {
+    reachable: boolean;
+    version?: string | null;
+    base_url: string;
+    error?: string | null;
+  };
+};
+
+export type SystemAlerts = {
+  alerts: SystemAlert[];
+  generated_at: string;
+};

@@ -40,3 +40,21 @@ export function formatCost(value: number) {
   if (value < 0.01) return `$${value.toFixed(4)}`;
   return `$${value.toFixed(2)}`;
 }
+
+export function formatBytes(value: number, digits = 1) {
+  if (!value) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  const amount = value / 1024 ** index;
+  return `${amount.toFixed(index >= 3 ? digits : 0)} ${units[index]}`;
+}
+
+export function formatUptime(seconds: number) {
+  if (!seconds) return "—";
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}

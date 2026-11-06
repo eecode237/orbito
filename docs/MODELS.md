@@ -6,16 +6,19 @@ provider model, streams the response, accounts for tokens and fails over.
 
 ## Roles, not model names
 
-`app/config/models.yaml` defines roles:
+`app/config/models.yaml` defines roles. The shipped default is **local-first**:
+every role resolves to Ollama, then the deterministic mock. Cloud models are
+opt-in additions, not requirements.
 
 | Role | Default | Used by |
 |---|---|---|
-| `fast` | Gemini 2.5 Flash | quick chat, default |
-| `smart` | GPT-4.1 mini | general reasoning |
-| `reasoning` | Claude Sonnet 4.5 | research, study |
-| `coding` | Claude Sonnet 4.5 | build, automation |
-| `vision` | Gemini 2.5 Flash | image/video understanding |
-| `local` | Ollama `llama3.2` | private/offline inference |
+| `fast` | Ollama `qwen3.5:4b` | quick chat, default |
+| `smart` | Ollama `qwen3.5:4b` | general reasoning |
+| `reasoning` | Ollama `qwen3.5:4b` | research, study |
+| `coding` | Ollama `qwen3.5:4b` | build, automation |
+| `vision` | Ollama `qwen3.5:4b` | image understanding |
+| `local` | Ollama `qwen3.5:4b` | private/offline inference |
+| `mock` | in-process `orbito-fast` | guaranteed offline fallback |
 
 Each role declares provider, model, context window, list price and a fallback
 chain:
@@ -23,13 +26,45 @@ chain:
 ```yaml
 roles:
   fast:
-    provider: google
-    model: gemini-2.5-flash
-    label: Gemini 2.5 Flash
+    provider: ollama
+    model: qwen3.5:4b
+    label: Qwen3.5 4B (local)
+    context_window: 8192
+    local: true
 
 fallbacks:
-  fast: [smart, local, mock]
+  fast: [local, mock]
 ```
+
+## Local models (Ollama)
+
+Install [Ollama](https://ollama.com), start it, and pull one model:
+
+```bash
+ollama serve
+ollama pull qwen3.5:4b
+```
+
+`qwen3.5:4b` is the recommended default for a 32 GB laptop without a discrete
+GPU: it supports tools and vision, and stays responsive on CPU. Use
+**Settings → Model Hub** to see hardware, download or delete models, and check
+what is currently loaded.
+
+```env
+OLLAMA_ENABLED=true
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_CONTEXT_LENGTH=8192
+OLLAMA_THINK=false
+```
+
+- `OLLAMA_CONTEXT_LENGTH` is a per-request `num_ctx` budget. Larger contexts
+  need more memory and slow prefill; 8k is a good CPU default.
+- `OLLAMA_THINK=false` disables the thinking trace. On a CPU-only machine it
+  can turn a one-second answer into a multi-minute one. Enable it per task when
+  quality matters more than latency.
+- Ollama's own service context/keep-alive can also be raised with a systemd
+  drop-in (`OLLAMA_CONTEXT_LENGTH`, `OLLAMA_KEEP_ALIVE`); ORBITO does not edit
+  the service for you.
 
 ## Overrides
 
@@ -37,15 +72,15 @@ Change the deployed model without a code change:
 
 ```env
 ORBITO_DEFAULT_MODEL=fast
-ORBITO_FAST_MODEL=gpt-4.1-mini
-ORBITO_SMART_MODEL=claude-haiku-4-5
-ORBITO_REASONING_MODEL=claude-sonnet-4-5
-ORBITO_CODING_MODEL=claude-sonnet-4-5
-ORBITO_VISION_MODEL=gemini-2.5-pro
+ORBITO_FAST_MODEL=qwen3.5:4b
+ORBITO_SMART_MODEL=qwen3.5:9b
+ORBITO_REASONING_MODEL=qwen3.5:9b
+ORBITO_CODING_MODEL=qwen2.5-coder:7b
+ORBITO_VISION_MODEL=qwen3.5:4b
 OLLAMA_ENABLED=true
 ```
 
-Keys (server-side only):
+Cloud keys are optional and server-side only:
 
 ```env
 OPENAI_API_KEY=
@@ -55,8 +90,9 @@ MISTRAL_API_KEY=
 OLLAMA_BASE_URL=http://localhost:11434
 ```
 
-A provider is “configured” when its key exists. Ollama is opt-in
-(`OLLAMA_ENABLED=true`) so a missing local server never adds latency.
+A provider is “configured” when its key exists (or Ollama is reachable and
+enabled). `OLLAMA_ENABLED` defaults to `true`; set it to `false` only when you
+want to force a pure cloud/mock setup.
 
 ## Resolution algorithm
 
@@ -78,15 +114,33 @@ Events: `start` → `delta*` → `done`, or `error`.
 | `anthropic` | Messages | SSE | system prompt separate, usage events |
 | `google` | `streamGenerateContent?alt=sse` | SSE | multimodal capable |
 | `mistral` | OpenAI-compatible | SSE | shares the OpenAI adapter |
-| `ollama` | `/api/chat` | NDJSON | opt-in local models |
+| `ollama` | `/api/chat` | NDJSON | default local provider |
 | `mock` | in-process | simulated | agent-aware deterministic answer |
+
+## Model Hub
+
+`/api/v1/model-hub/*` exposes Ollama discovery and lifecycle so the UI never
+shells out:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/model-hub/overview` | Server status, installed/running models, hardware, suggestions |
+| GET | `/model-hub/hardware` | CPU, memory, GPUs, disk |
+| GET | `/model-hub/models/show?name=` | Capabilities and context length |
+| POST | `/model-hub/pull` | SSE download progress |
+| DELETE | `/model-hub/models?name=` | Delete an installed model |
+
+Model names are validated against a registry-safe pattern before they reach
+Ollama. Downloads stream progress (`pulling`, `percent`, `success`) instead of
+blocking a normal request for several minutes.
 
 ## Offline mock provider
 
-With no keys, ORBITO boots on `mock`. It uses the request metadata (`agent`,
-`tool_context`) to produce a realistic, clearly labelled answer, and streams it
-so the full UI/SSE pipeline can be exercised. The UI marks the gateway as
-“offline ready”; the mock never claims that an external action occurred.
+If no provider is configured — or Ollama is stopped and no cloud key exists —
+ORBITO boots on `mock`. It uses the request metadata (`agent`, `tool_context`)
+to produce a realistic, clearly labelled answer, and streams it so the full
+UI/SSE pipeline can be exercised. The UI marks the gateway as “offline ready”;
+the mock never claims that an external action occurred.
 
 ## Cost accounting
 

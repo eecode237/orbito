@@ -99,3 +99,24 @@ async def test_mock_provider_streams_and_reports_usage():
     assert done.usage is not None
     assert done.usage.total_tokens > 0
     assert done.provider in {"mock", "ollama", "google", "openai", "anthropic"}
+
+
+def test_ollama_payload_sets_context_and_disables_thinking():
+    from app.config import settings
+    from app.core.model_gateway.providers.ollama import OllamaProvider
+
+    provider = OllamaProvider()
+    spec = ModelSpec(
+        role="local", provider="ollama", model="qwen3.5:4b", label="local"
+    )
+    payload = provider.payload(
+        spec,
+        GenerationRequest(
+            capability="local",
+            messages=[Message(role="user", content="hello")],
+        ),
+    )
+
+    assert payload["model"] == "qwen3.5:4b"
+    assert payload["options"]["num_ctx"] == settings.ollama_context_length
+    assert payload["think"] is settings.ollama_think

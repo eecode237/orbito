@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Boxes,
   BrainCircuit,
   Check,
   Coins,
@@ -17,6 +18,7 @@ import {
   UserRound,
 } from "lucide-react";
 
+import { ModelHub } from "@/components/settings/model-hub";
 import { apiSend, getMemories, getModels, getTasks, getUsage } from "@/lib/api";
 import type { MemoryItem, ModelInfo, ProviderStatus, TaskSummary, UsageSummary } from "@/lib/types";
 import { cn, compactNumber, formatCost, formatRelative } from "@/lib/utils";
@@ -24,6 +26,7 @@ import { cn, compactNumber, formatCost, formatRelative } from "@/lib/utils";
 const tabs = [
   { id: "profile", label: "Profile", icon: UserRound },
   { id: "models", label: "AI Models", icon: BrainCircuit },
+  { id: "hub", label: "Model Hub", icon: Boxes },
   { id: "providers", label: "API Providers", icon: KeyRound },
   { id: "memory", label: "Memory", icon: Layers },
   { id: "usage", label: "Usage & Costs", icon: Coins },
@@ -372,6 +375,8 @@ OLLAMA_ENABLED=true`}
             </div>
           </div>
         ) : null}
+
+        {!loading && tab === "hub" ? <ModelHub /> : null}
 
         {!loading && tab === "providers" ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

@@ -5,6 +5,7 @@ import {
   Briefcase,
   Code2,
   FileText,
+  Gauge,
   Globe2,
   GraduationCap,
   LayoutDashboard,
@@ -32,6 +33,7 @@ export const navGroups: NavGroup[] = [
       { href: "/", label: "Overview", icon: LayoutDashboard },
       { href: "/chat", label: "Chat", icon: Sparkles },
       { href: "/agents", label: "Agents", icon: Briefcase },
+      { href: "/system", label: "System", icon: Gauge },
     ],
   },
   {

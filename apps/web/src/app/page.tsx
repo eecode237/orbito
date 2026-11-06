@@ -3,11 +3,13 @@ import Link from "next/link";
 
 import { Mascot } from "@/components/brand/mascot";
 import { ActivityPanel } from "@/components/dashboard/activity-panel";
+import { AgentFleet } from "@/components/dashboard/agent-fleet";
 import { MemoryCard } from "@/components/dashboard/memory-card";
 import { ModelStrip } from "@/components/dashboard/model-strip";
 import { PromptBar } from "@/components/dashboard/prompt-bar";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 import { StatsRow } from "@/components/dashboard/stats-row";
+import { SystemPanel } from "@/components/dashboard/system-panel";
 
 export const metadata = { title: "Overview" };
 
@@ -71,6 +73,7 @@ export default function HomePage() {
         <div className="space-y-5">
           <QuickActions />
           <ModelStrip />
+          <AgentFleet />
 
           <section className="glass overflow-hidden rounded-2xl">
             <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
@@ -115,6 +118,7 @@ export default function HomePage() {
         </div>
 
         <aside className="space-y-4">
+          <SystemPanel />
           <ActivityPanel />
           <MemoryCard />
         </aside>

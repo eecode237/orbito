@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 
 import { Sidebar, SidebarContent } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { AlertToaster } from "@/components/system/alert-toaster";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -41,6 +42,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      <AlertToaster />
     </div>
   );
 }

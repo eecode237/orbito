@@ -30,7 +30,9 @@ without rebuilding the product.
 | Monorepo, docs, env, Docker Compose | ✅ |
 | Next.js dashboard (ORBITO design system) | ✅ |
 | FastAPI backend + SQLAlchemy persistence | ✅ |
-| Model Gateway (OpenAI / Anthropic / Google / Mistral / Ollama / mock) | ✅ |
+| Model Gateway (Ollama local-first, cloud optional, mock fallback) | ✅ |
+| Local Model Hub (download, inspect, delete, hardware) | ✅ |
+| Live system monitor + threshold alerts | ✅ |
 | Orchestrator + streaming task timeline | ✅ |
 | Agent registry (Career, Research, Study, Coding, Automation) | ✅ |
 | Tool registry (search, browser, filesystem, documents) | ✅ |
@@ -39,8 +41,10 @@ without rebuilding the product.
 | Voice / Video, automations, billing | ⏳ Phase 6–7 |
 | Auth (Better Auth) | ⏳ Phase 1 next |
 
-With **no API keys configured**, ORBITO boots on a deterministic mock provider so
-the entire request → plan → tools → stream → persist loop is usable locally.
+With **Ollama running** (the default) ORBITO uses local models only. If the
+local server is stopped and no cloud key exists, it falls back to a
+deterministic mock so the entire request → plan → tools → stream → persist loop
+is still usable offline.
 
 ## Quick start
 
@@ -68,11 +72,22 @@ export DATABASE_URL=postgresql+asyncpg://orbito:orbito@localhost:5432/orbito
 make dev
 ```
 
-### Add real models
+### Run on local models
 
-Set any provider key in `.env`; the gateway discovers it and routes
-capabilities (`fast`, `reasoning`, `coding`, `vision`, `local`) to it. Model
-names are config, never hardcoded:
+Install [Ollama](https://ollama.com), start it, and pull the default model:
+
+```bash
+ollama serve
+ollama pull qwen3.5:4b
+```
+
+ORBITO resolves every role (`fast`, `smart`, `reasoning`, `coding`, `vision`,
+`local`) to Ollama out of the box, with the deterministic mock as the final
+fallback. No cloud keys are needed. Open **Settings → Model Hub** to see your
+hardware, download or delete models, and check what is loaded; **System** in the
+sidebar shows live CPU, memory, disk, heat and battery with threshold alerts.
+
+Model names are config, never hardcoded. To add a cloud model later:
 
 ```env
 OPENAI_API_KEY=sk-...

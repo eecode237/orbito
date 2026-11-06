@@ -29,20 +29,28 @@ class OllamaProvider(BaseProvider):
         # Local server is opt-in so a missing Ollama never delays a request.
         return settings.ollama_enabled and bool(settings.ollama_base_url)
 
-    async def stream(
-        self, spec: ModelSpec, request: GenerationRequest
-    ) -> AsyncIterator[StreamEvent]:
-        payload = {
+    def payload(self, spec: ModelSpec, request: GenerationRequest) -> dict:
+        """Request body, kept separate so the contract can be unit-tested."""
+        return {
             "model": spec.model,
             "messages": build_messages(request),
             "stream": True,
+            "think": settings.ollama_think,
             "options": {
-                "temperature": request.temperature
-                if request.temperature is not None
-                else settings.model_temperature,
+                "temperature": (
+                    request.temperature
+                    if request.temperature is not None
+                    else settings.model_temperature
+                ),
                 "num_predict": request.max_tokens or settings.model_max_tokens,
+                "num_ctx": settings.ollama_context_length,
             },
         }
+
+    async def stream(
+        self, spec: ModelSpec, request: GenerationRequest
+    ) -> AsyncIterator[StreamEvent]:
+        payload = self.payload(spec, request)
         usage = Usage()
         started = False
 

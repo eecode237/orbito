@@ -2,10 +2,14 @@ import type {
   Agent,
   ChatEvent,
   MemoryItem,
+  ModelHubOverview,
   ModelInfo,
   ProviderStatus,
+  PullEvent,
   ScrapingJob,
   ScrapingResult,
+  SystemAlerts,
+  SystemStats,
   TaskSummary,
   UsageSummary,
 } from "@/lib/types";
@@ -68,27 +72,11 @@ export type ChatInput = {
 };
 
 /**
- * POST /chat and consume its SSE stream. Parsing is buffered so a chunk boundary
- * can never split an event.
+ * Consume an SSE response. Parsing is buffered so a chunk boundary can never
+ * split an event.
  */
-export async function streamChat(
-  input: ChatInput,
-  onEvent: (event: ChatEvent) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  const response = await fetch(`${API_URL}/api/v1/chat`, {
-    method: "POST",
-    headers: {
-      Accept: "text/event-stream",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ ...input, stream: true }),
-    signal,
-  });
-
-  if (!response.ok || !response.body) {
-    throw new ApiError(await parseError(response), response.status);
-  }
+async function readSse<T>(response: Response, onEvent: (event: T) => void): Promise<void> {
+  if (!response.body) return;
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -110,7 +98,7 @@ export async function streamChat(
         .join("\n");
       if (data) {
         try {
-          onEvent(JSON.parse(data) as ChatEvent);
+          onEvent(JSON.parse(data) as T);
         } catch {
           // A malformed event should never take down the stream.
         }
@@ -118,6 +106,31 @@ export async function streamChat(
       boundary = buffer.indexOf("\n\n");
     }
   }
+}
+
+/**
+ * POST /chat and consume its SSE stream.
+ */
+export async function streamChat(
+  input: ChatInput,
+  onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${API_URL}/api/v1/chat`, {
+    method: "POST",
+    headers: {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ...input, stream: true }),
+    signal,
+  });
+
+  if (!response.ok || !response.body) {
+    throw new ApiError(await parseError(response), response.status);
+  }
+
+  await readSse<ChatEvent>(response, onEvent);
 }
 
 export async function getAgents(): Promise<{ agents: Agent[]; tools: unknown[] }> {
@@ -152,4 +165,49 @@ export async function getScrapingJob(
   id: string,
 ): Promise<{ job: ScrapingJob; results: ScrapingResult[] }> {
   return apiGet(`/api/v1/scraping/jobs/${id}`);
+}
+
+export async function getModelHub(): Promise<ModelHubOverview> {
+  return apiGet("/api/v1/model-hub/overview");
+}
+
+export async function deleteLocalModel(name: string): Promise<void> {
+  await apiSend(
+    `/api/v1/model-hub/models?name=${encodeURIComponent(name)}`,
+    "DELETE",
+  );
+}
+
+/**
+ * POST /model-hub/pull and consume its SSE progress stream. The request stays
+ * open for as long as the download takes, so callers can abort it.
+ */
+export async function pullModel(
+  name: string,
+  onEvent: (event: PullEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${API_URL}/api/v1/model-hub/pull`, {
+    method: "POST",
+    headers: {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name }),
+    signal,
+  });
+
+  if (!response.ok || !response.body) {
+    throw new ApiError(await parseError(response), response.status);
+  }
+
+  await readSse<PullEvent>(response, onEvent);
+}
+
+export async function getSystemStats(): Promise<SystemStats> {
+  return apiGet("/api/v1/system/stats");
+}
+
+export async function getSystemAlerts(): Promise<SystemAlerts> {
+  return apiGet("/api/v1/system/alerts");
 }

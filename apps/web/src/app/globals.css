@@ -1,0 +1,268 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #06040f;
+  --color-ink-soft: #090615;
+  --color-panel: #0b0818;
+  --color-panel-2: #100b21;
+  --color-line: rgba(167, 139, 250, 0.14);
+  --color-violet: #7c5cff;
+  --color-violet-soft: #a78bfa;
+  --color-mint: #3ddc97;
+  --color-sky: #38bdf8;
+  --color-amber: #f5a524;
+  --color-rose: #fb7185;
+  --color-muted: #a79fc4;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space), var(--font-inter), ui-sans-serif, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  border-color: rgba(167, 139, 250, 0.12);
+}
+
+html,
+body {
+  background: #06040f;
+  color: #f4f1ff;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-image:
+    radial-gradient(900px 520px at 78% -10%, rgba(124, 92, 255, 0.2), transparent 62%),
+    radial-gradient(700px 460px at 8% 8%, rgba(61, 220, 151, 0.06), transparent 60%),
+    radial-gradient(800px 600px at 50% 110%, rgba(124, 92, 255, 0.1), transparent 65%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(124, 92, 255, 0.45);
+  color: #fff;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.2);
+  border-radius: 999px;
+  border: 3px solid #06040f;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(167, 139, 250, 0.35);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.glass {
+  background: linear-gradient(160deg, rgba(20, 15, 38, 0.86), rgba(9, 6, 20, 0.9));
+  border: 1px solid rgba(167, 139, 250, 0.13);
+  backdrop-filter: blur(18px);
+}
+
+.glass-soft {
+  background: rgba(16, 11, 33, 0.6);
+  border: 1px solid rgba(167, 139, 250, 0.1);
+  backdrop-filter: blur(12px);
+}
+
+.card-hover {
+  transition:
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+.card-hover:hover {
+  transform: translateY(-3px);
+  border-color: rgba(167, 139, 250, 0.32);
+  box-shadow: 0 18px 50px -24px rgba(124, 92, 255, 0.55);
+}
+
+.text-gradient {
+  background: linear-gradient(92deg, #a78bfa 0%, #7c5cff 48%, #38bdf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.halo {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(60px);
+  pointer-events: none;
+}
+
+.grid-lines {
+  background-image:
+    linear-gradient(rgba(167, 139, 250, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(167, 139, 250, 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at 50% 30%, black, transparent 78%);
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+.animate-float {
+  animation: float-soft 6s ease-in-out infinite;
+}
+
+@keyframes ring-spin {
+  from {
+    transform: rotate(-18deg);
+  }
+  to {
+    transform: rotate(342deg);
+  }
+}
+.animate-ring {
+  animation: ring-spin 26s linear infinite;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+.animate-glow {
+  animation: pulse-glow 5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(167, 139, 250, 0.12), transparent);
+  animation: shimmer 1.8s infinite;
+}
+
+@keyframes blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.12);
+  }
+}
+.animate-blink {
+  animation: blink 7s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.markdown {
+  color: #e9e5ff;
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+.markdown > * + * {
+  margin-top: 0.85rem;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  font-family: var(--font-display);
+  color: #fff;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.markdown h1 {
+  font-size: 1.3rem;
+}
+.markdown h2 {
+  font-size: 1.12rem;
+}
+.markdown h3 {
+  font-size: 1rem;
+}
+.markdown strong {
+  color: #fff;
+  font-weight: 600;
+}
+.markdown ul,
+.markdown ol {
+  padding-left: 1.25rem;
+}
+.markdown ul {
+  list-style: disc;
+}
+.markdown ol {
+  list-style: decimal;
+}
+.markdown li + li {
+  margin-top: 0.3rem;
+}
+.markdown a {
+  color: #a78bfa;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.markdown code {
+  background: rgba(124, 92, 255, 0.15);
+  border: 1px solid rgba(167, 139, 250, 0.18);
+  border-radius: 5px;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.85em;
+}
+.markdown pre {
+  background: #070510;
+  border: 1px solid rgba(167, 139, 250, 0.15);
+  border-radius: 12px;
+  padding: 0.9rem;
+  overflow-x: auto;
+}
+.markdown pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.markdown blockquote {
+  border-left: 2px solid rgba(167, 139, 250, 0.5);
+  padding-left: 0.85rem;
+  color: #b9b2d4;
+}
+.markdown hr {
+  border-color: rgba(167, 139, 250, 0.15);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid rgba(124, 92, 255, 0.8);
+  outline-offset: 2px;
+}

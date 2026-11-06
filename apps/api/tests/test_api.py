@@ -55,6 +55,26 @@ def test_chat_json_and_stream():
         assert "event: delta" in body
 
 
+def test_tasks_endpoint_returns_plan_steps():
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/v1/chat",
+            json={"message": "Plan my week", "agent": "core", "stream": False},
+        )
+        assert created.status_code == 200, created.text
+        task_id = created.json()["task_id"]
+
+        listed = client.get("/api/v1/tasks?limit=5")
+        assert listed.status_code == 200, listed.text
+        tasks = listed.json()["tasks"]
+        assert tasks
+        assert tasks[0]["steps"]
+
+        detail = client.get(f"/api/v1/tasks/{task_id}")
+        assert detail.status_code == 200, detail.text
+        assert len(detail.json()["steps"]) >= 3
+
+
 def test_memory_crud():
     with TestClient(app) as client:
         created = client.post(

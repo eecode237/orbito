@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.db.models import (
@@ -253,7 +254,10 @@ async def update_step(step_id: str | None, **fields: Any) -> None:
 async def get_task(task_id: str) -> Task | None:
     try:
         async with SessionLocal() as session:
-            return await session.get(Task, task_id)
+            result = await session.execute(
+                select(Task).where(Task.id == task_id).options(selectinload(Task.steps))
+            )
+            return result.scalar_one_or_none()
     except Exception as exc:
         logger.warning("task lookup failed: %s", exc)
         return None
@@ -265,6 +269,7 @@ async def list_tasks(user_id: str = DEMO_USER_ID, limit: int = 20) -> list[Task]
             result = await session.execute(
                 select(Task)
                 .where(Task.user_id == user_id)
+                .options(selectinload(Task.steps))
                 .order_by(Task.created_at.desc())
                 .limit(limit)
             )

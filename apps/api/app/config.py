@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     mistral_api_key: str | None = None
     mistral_base_url: str = "https://api.mistral.ai/v1"
     ollama_base_url: str = "http://localhost:11434"
+    ollama_enabled: bool = False
 
     # --- tools -------------------------------------------------------------
     tavily_api_key: str | None = None

@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 MODELS_FILE = Path(__file__).resolve().parents[2] / "config" / "models.yaml"
 
 ROLE_ENV_OVERRIDES = {
-    "fast": ("orbito_fast_model", "orbito_default_model"),
+    "fast": ("orbito_fast_model",),
     "smart": ("orbito_smart_model",),
     "reasoning": ("orbito_reasoning_model",),
     "coding": ("orbito_coding_model",),

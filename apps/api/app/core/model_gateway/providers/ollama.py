@@ -26,8 +26,8 @@ class OllamaProvider(BaseProvider):
 
     @property
     def configured(self) -> bool:
-        # Local server; start it and the gateway can use it. Failure falls back.
-        return bool(settings.ollama_base_url)
+        # Local server is opt-in so a missing Ollama never delays a request.
+        return settings.ollama_enabled and bool(settings.ollama_base_url)
 
     async def stream(
         self, spec: ModelSpec, request: GenerationRequest

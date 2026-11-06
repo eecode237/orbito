@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ChatRequest(BaseModel):
@@ -41,9 +41,11 @@ class MemoryCreate(BaseModel):
 
 
 class ScrapingJobCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str | None = None
     urls: list[str] = Field(min_length=1, max_length=50)
-    schema: dict[str, Any] = Field(default_factory=dict)
+    scrape_schema: dict[str, Any] = Field(default_factory=dict, alias="schema")
     config: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("urls")

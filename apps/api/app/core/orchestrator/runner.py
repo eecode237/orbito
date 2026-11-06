@@ -45,7 +45,8 @@ class Orchestrator:
     async def run(self, request: OrchestratorRequest) -> AsyncIterator[dict[str, Any]]:
         agent = agents.select(request.message, request.agent_slug)
         capability = self._capability(request.model_role or agent.model_role)
-        spec = registry.get(capability)
+        resolved = gateway.resolve(capability)
+        spec = resolved[0][0] if resolved else registry.get(capability)
 
         plan = self._build_plan(agent, request.message)
         task_id = await repo.create_task(

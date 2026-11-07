@@ -50,8 +50,13 @@ FEEDS: dict[str, list[tuple[str, str]]] = {
 
 CATEGORIES = ("all", "ai", "tech", "crypto", "finance")
 CACHE_SECONDS = 120
-MARKET_CACHE_SECONDS = 60
-CHART_CACHE_SECONDS = 300
+MARKET_CACHE_SECONDS = 90
+CHART_CACHE_SECONDS = 600
+# CoinGecko free tier is rate-limited; honor Retry-After/429 and serve stale
+# cache rather than surfacing a hard error to the dashboard.
+MARKET_MIN_INTERVAL = 2.0
+MARKET_MAX_RETRIES = 2
+MARKET_BACKOFF = 1.5
 
 _TAG = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
@@ -159,8 +164,43 @@ class IntelCache:
         self._news_at = 0.0
         self._market: dict[str, Any] = {}
         self._market_at = 0.0
+        self._market_next_ok = 0.0
         self._charts: dict[str, tuple[float, dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
+
+    async def _get_json(
+        self, url: str, *, params: dict[str, str] | None = None
+    ) -> tuple[bool, Any, str | None]:
+        """Fetch JSON with 429-aware backoff. Returns (ok, data_or_None, error)."""
+        last_err: str | None = None
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(12.0, connect=6.0),
+            headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+            follow_redirects=True,
+        ) as client:
+            for attempt in range(MARKET_MAX_RETRIES + 1):
+                try:
+                    response = await client.get(url, params=params)
+                    if response.status_code == 429:
+                        retry = response.headers.get("Retry-After")
+                        try:
+                            wait = min(30.0, max(1.0, float(retry or MARKET_BACKOFF)))
+                        except ValueError:
+                            wait = MARKET_BACKOFF
+                        self._market_next_ok = time.monotonic() + wait
+                        last_err = "Public market API rate-limited (429). Showing cached data when available."
+                        if attempt < MARKET_MAX_RETRIES:
+                            await asyncio.sleep(wait)
+                            continue
+                        return False, None, last_err
+                    response.raise_for_status()
+                    return True, response.json(), None
+                except Exception as exc:  # noqa: BLE001 - surfaced as data-source health
+                    last_err = str(exc)[:180]
+                    if attempt < MARKET_MAX_RETRIES:
+                        await asyncio.sleep(MARKET_BACKOFF * (attempt + 1))
+                        continue
+        return False, None, last_err or "Request failed"
 
     async def news(self, category: str, limit: int) -> dict[str, Any]:
         key = f"{category}:{limit}"
@@ -234,9 +274,29 @@ class IntelCache:
 
     async def market(self) -> dict[str, Any]:
         async with self._lock:
-            if self._market and time.monotonic() - self._market_at < MARKET_CACHE_SECONDS:
+            now = time.monotonic()
+            if self._market and now - self._market_at < MARKET_CACHE_SECONDS:
                 return self._market
+            if now < self._market_next_ok and self._market:
+                stale = {**self._market, "stale": True}
+                return stale
             payload = await self._fetch_market()
+            if payload.get("reachable"):
+                self._market = payload
+                self._market_at = time.monotonic()
+                self._market_next_ok = time.monotonic() + MARKET_MIN_INTERVAL
+                return payload
+            # Upstream failed: serve stale cache if we have one, never invent prices.
+            if self._market:
+                stale = {
+                    **self._market,
+                    "reachable": True,
+                    "stale": True,
+                    "error": payload.get("error"),
+                    "generated_at": self._market.get("generated_at"),
+                }
+                self._market_at = time.monotonic() - (MARKET_CACHE_SECONDS / 2)
+                return stale
             self._market = payload
             self._market_at = time.monotonic()
             return payload
@@ -251,60 +311,61 @@ class IntelCache:
             "sparkline": "true",
             "price_change_percentage": "24h",
         }
-        try:
-            async with httpx.AsyncClient(timeout=9.0, headers={"User-Agent": USER_AGENT}) as client:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                rows = response.json()
-            assets = [
-                {
-                    "id": row.get("id"),
-                    "symbol": (row.get("symbol") or "").upper(),
-                    "name": row.get("name"),
-                    "image": row.get("image"),
-                    "price_usd": row.get("current_price"),
-                    "market_cap_usd": row.get("market_cap"),
-                    "rank": row.get("market_cap_rank"),
-                    "volume_24h_usd": row.get("total_volume"),
-                    "change_24h_percent": row.get("price_change_percentage_24h"),
-                    "sparkline": (row.get("sparkline_in_7d") or {}).get("price", [])[-48:],
-                    "last_updated": row.get("last_updated"),
-                }
-                for row in rows
-            ]
-            return {
-                "reachable": True,
-                "error": None,
-                "currency": "usd",
-                "assets": assets,
-                "generated_at": datetime.now(UTC).isoformat(),
-                "provider": "CoinGecko public API",
-            }
-        except Exception as exc:  # noqa: BLE001 - exposed as data-source health
+        ok, rows, err = await self._get_json(url, params=params)
+        if not ok or not isinstance(rows, list):
             return {
                 "reachable": False,
-                "error": str(exc)[:180],
+                "error": err,
                 "currency": "usd",
                 "assets": [],
                 "generated_at": datetime.now(UTC).isoformat(),
                 "provider": "CoinGecko public API",
+                "stale": False,
             }
+        assets = [
+            {
+                "id": row.get("id"),
+                "symbol": (row.get("symbol") or "").upper(),
+                "name": row.get("name"),
+                "image": row.get("image"),
+                "price_usd": row.get("current_price"),
+                "market_cap_usd": row.get("market_cap"),
+                "rank": row.get("market_cap_rank"),
+                "volume_24h_usd": row.get("total_volume"),
+                "change_24h_percent": row.get("price_change_percentage_24h"),
+                "sparkline": (row.get("sparkline_in_7d") or {}).get("price", [])[-48:],
+                "last_updated": row.get("last_updated"),
+            }
+            for row in rows
+        ]
+        return {
+            "reachable": True,
+            "error": None,
+            "currency": "usd",
+            "assets": assets,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "provider": "CoinGecko public API",
+            "stale": False,
+        }
 
     async def chart(self, coin: str, days: int) -> dict[str, Any]:
         key = f"{coin}:{days}"
         async with self._lock:
+            now = time.monotonic()
             cached = self._charts.get(key)
-            if cached and time.monotonic() - cached[0] < CHART_CACHE_SECONDS:
+            if cached and now - cached[0] < CHART_CACHE_SECONDS:
                 return cached[1]
+            if cached and now < self._market_next_ok:
+                return {**cached[1], "stale": True}
 
         url = f"https://api.coingecko.com/api/v3/coins/{coin}/market_chart"
-        try:
-            async with httpx.AsyncClient(timeout=9.0, headers={"User-Agent": USER_AGENT}) as client:
-                response = await client.get(
-                    url, params={"vs_currency": "usd", "days": str(days), "interval": "daily" if days > 1 else "hourly"}
-                )
-                response.raise_for_status()
-                payload = response.json()
+        params = {
+            "vs_currency": "usd",
+            "days": str(days),
+            "interval": "daily" if days > 1 else "hourly",
+        }
+        ok, payload, err = await self._get_json(url, params=params)
+        if ok and isinstance(payload, dict):
             points = [
                 {"t": int(timestamp), "price": price}
                 for timestamp, price in payload.get("prices", [])
@@ -317,17 +378,24 @@ class IntelCache:
                 "currency": "usd",
                 "points": points,
                 "generated_at": datetime.now(UTC).isoformat(),
+                "stale": False,
             }
-        except Exception as exc:  # noqa: BLE001
-            result = {
-                "reachable": False,
-                "error": str(exc)[:180],
-                "coin": coin,
-                "days": days,
-                "currency": "usd",
-                "points": [],
-                "generated_at": datetime.now(UTC).isoformat(),
-            }
+        else:
+            async with self._lock:
+                cached = self._charts.get(key)
+            if cached:
+                result = {**cached[1], "reachable": True, "stale": True, "error": err}
+            else:
+                result = {
+                    "reachable": False,
+                    "error": err,
+                    "coin": coin,
+                    "days": days,
+                    "currency": "usd",
+                    "points": [],
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "stale": False,
+                }
 
         async with self._lock:
             self._charts[key] = (time.monotonic(), result)

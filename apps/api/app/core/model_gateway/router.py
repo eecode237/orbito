@@ -48,9 +48,9 @@ class ModelGateway:
         models: list[dict] = []
         for role, spec in self.registry.roles.items():
             provider = self.providers.get(spec.provider)
-            models.append(
+            entry = dict(spec)
+            entry.update(
                 {
-                    **spec.model_dump(),
                     "configured": bool(provider and provider.configured),
                     "is_default": role == self.registry.default_role,
                     "fallback_chain": [
@@ -59,6 +59,7 @@ class ModelGateway:
                     ],
                 }
             )
+            models.append(entry)
         return models
 
     def provider_status(self) -> list[dict]:

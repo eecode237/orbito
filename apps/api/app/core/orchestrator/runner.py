@@ -335,7 +335,7 @@ class Orchestrator:
                     "provider": provider,
                     "model": model,
                     "cost_usd": cost,
-                    "usage": usage.model_dump() if usage else None,
+                    "usage": dict(usage) if usage else None,
                     "sources": len(sources),
                 },
             )
@@ -346,7 +346,7 @@ class Orchestrator:
                 "message": answer,
                 "agent": agent.describe(),
                 "model": {"provider": provider, "name": model, "role": capability},
-                "usage": usage.model_dump() if usage else None,
+                "usage": dict(usage) if usage else None,
                 "cost_usd": cost,
                 "finish_reason": finish_reason,
             }

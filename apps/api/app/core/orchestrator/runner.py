@@ -153,7 +153,7 @@ class Orchestrator:
                         if result.ok:
                             tool_context = result.summary
                             detail = result.summary[:240] or "Done"
-                            sources.extend(source.model_dump() for source in result.sources)
+                            sources.extend(dict(source) for source in result.sources)
                             await repo.add_task_event(
                                 task_id,
                                 kind="tool.result",
@@ -163,9 +163,7 @@ class Orchestrator:
                                 step_index=index,
                                 data={
                                     "tool": step.tool,
-                                    "sources": [
-                                        source.model_dump() for source in result.sources
-                                    ],
+                                    "sources": [dict(source) for source in result.sources],
                                 },
                             )
                             yield {

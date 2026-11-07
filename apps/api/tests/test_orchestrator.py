@@ -52,3 +52,48 @@ async def test_router_selects_research_agent_for_scraping():
     ]
     created = next(event for event in events if event["type"] == "task.created")
     assert created["agent"]["slug"] == "research"
+
+
+@pytest.mark.asyncio
+async def test_tool_sources_are_streamed_as_dicts(monkeypatch):
+    """Regression: ToolResult.sources are plain dicts — the runner must not
+    call .model_dump() on them (crashed specialist agents with sources)."""
+    from app.agents.registry import agents
+    from app.tools.base import ToolResult
+
+    agent = agents.get("career")
+
+    async def fake_gather(message: str, context: dict) -> ToolResult:
+        return ToolResult(
+            ok=True,
+            summary="Found 1 matching job",
+            sources=[
+                {
+                    "title": "ML Engineer",
+                    "url": "https://example.com/job/1",
+                    "snippet": "remote",
+                }
+            ],
+        )
+
+    monkeypatch.setattr(agent, "gather", fake_gather)
+
+    events = [
+        event
+        async for event in orchestrator.run(
+            OrchestratorRequest(
+                message="Find machine learning jobs in Canada",
+                user_id=DEMO_USER_ID,
+                agent_slug="career",
+                model_role="fast",
+            )
+        )
+    ]
+
+    types = [event["type"] for event in events]
+    assert "sources" in types
+    assert types[-1] == "done"
+    src = next(event for event in events if event["type"] == "sources")
+    assert src["sources"][0]["url"] == "https://example.com/job/1"
+    done = events[-1]
+    assert done["agent"]["slug"] == "career"

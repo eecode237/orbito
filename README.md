@@ -144,6 +144,14 @@ make db-up      # Postgres/Redis/MinIO containers
 - [Roadmap](docs/ROADMAP.md)
 - [Development guide](docs/DEVELOPMENT.md)
 
+### Planning & status
+
+- [Project breakdown](docs/PROJECT_BREAKDOWN.md) — repo audit vs. the 15-system blueprint
+- [Features](docs/FEATURES.md) — living feature-status catalog
+- [Project structure](docs/PROJECT_STRUCTURE.md) — current & target layout
+- [Implementation plan](docs/IMPLEMENTATION_PLAN.md) — ordered backlog
+- [Hardware & local LLMs](docs/HARDWARE_OLLAMA.md) — this machine's specs and Ollama model plan
+
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE). You may use, modify

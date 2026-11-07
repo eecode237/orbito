@@ -218,7 +218,7 @@ class Orchestrator:
                 await asyncio.sleep(0.12)
 
             await controls.checkpoint(task_id)
-            memory = await recall(request.user_id)
+            memory = await recall(request.user_id, workspace_id=request.workspace_id)
             await maybe_capture(request.user_id, request.message, request.workspace_id)
 
             system = build_system_prompt(

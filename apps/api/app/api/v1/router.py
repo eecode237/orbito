@@ -6,6 +6,7 @@ from app.api.v1 import (
     catalog,
     chat,
     conversations,
+    dashboard,
     files,
     health,
     intel,
@@ -30,5 +31,6 @@ api_router.include_router(memory.router)
 api_router.include_router(scraping.router)
 api_router.include_router(files.router)
 api_router.include_router(intel.router)
+api_router.include_router(dashboard.router)
 
 __all__ = ["api_router"]

@@ -80,3 +80,22 @@ def test_sources_lists_configured_feeds():
         payload = response.json()
         assert payload["sources"]
         assert payload["method"] == "RSS/Atom syndication"
+
+
+def test_dashboard_overview_aggregates_real_sources():
+    with TestClient(app) as client:
+        response = client.get("/api/v1/dashboard/overview")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["health"]["database"] in {"ok", "unavailable"}
+        assert "system" in payload
+        assert "metrics" in payload["tasks"]
+        assert "recent" in payload["tasks"]
+        assert "active" in payload["tasks"]
+        assert "summary" in payload["usage"]
+        assert isinstance(payload["activity"], list)
+        assert isinstance(payload["models"]["installed"], list)
+        assert payload["agents"]
+        # Honest offline state: local models are disabled in tests.
+        assert payload["models"]["enabled"] is False
+        assert payload["models"]["reachable"] is False

@@ -58,7 +58,7 @@ def _step_payload(step) -> dict[str, Any]:
     }
 
 
-def _task_payload(task) -> dict[str, Any]:
+def task_payload(task) -> dict[str, Any]:
     meta = task.meta or {}
     return {
         "id": task.id,
@@ -84,7 +84,7 @@ def _task_payload(task) -> dict[str, Any]:
     }
 
 
-def _event_payload(event) -> dict[str, Any]:
+def event_payload(event) -> dict[str, Any]:
     return {
         "id": event.id,
         "task_id": event.task_id,
@@ -108,7 +108,7 @@ async def list_tasks(
     tasks = await repo.list_tasks(limit=limit, offset=offset, status=status, query=q)
     total = await repo.count_tasks(status=status, query=q)
     return {
-        "tasks": [_task_payload(task) for task in tasks],
+        "tasks": [task_payload(task) for task in tasks],
         "total": total,
         "limit": limit,
         "offset": offset,
@@ -126,7 +126,7 @@ async def get_task(task_id: str) -> dict:
     task = await repo.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    payload = _task_payload(task)
+    payload = task_payload(task)
     payload["usage"] = await repo.task_usage(task_id)
     return payload
 
@@ -137,7 +137,7 @@ async def get_task_events(task_id: str, limit: int = Query(default=500, ge=1, le
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     events = await repo.list_task_events(task_id, limit=limit)
-    return {"task_id": task_id, "events": [_event_payload(event) for event in events]}
+    return {"task_id": task_id, "events": [event_payload(event) for event in events]}
 
 
 @router.get("/{task_id}/events/stream")
@@ -162,7 +162,7 @@ async def stream_task_events(task_id: str) -> StreamingResponse:
                 if event.id in seen:
                     continue
                 seen.add(event.id)
-                yield sse({"type": "event", "event": _event_payload(event)})
+                yield sse({"type": "event", "event": event_payload(event)})
             terminal = bool(current and current.status in TERMINAL)
             if terminal:
                 idle += 1

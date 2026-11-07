@@ -441,3 +441,70 @@ export type CryptoChart = {
   points: CryptoChartPoint[];
   generated_at: string;
 };
+
+export type UsagePoint = {
+  date: string;
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+};
+
+export type UsageBreakdown = {
+  name: string;
+  requests: number;
+  tokens: number;
+  cost_usd: number;
+};
+
+export type PendingApproval = {
+  task_id: string;
+  title: string;
+  agent: string | null;
+  request: string | null;
+  created_at: string | null;
+};
+
+export type DashboardModels = {
+  enabled: boolean;
+  reachable: boolean;
+  error: string | null;
+  ollama: {
+    reachable: boolean;
+    version?: string | null;
+    base_url: string;
+    error?: string | null;
+  };
+  installed: LocalModel[];
+  running: RunningModel[];
+  catalog: ModelInfo[];
+};
+
+export type DashboardOverview = {
+  generated_at: string;
+  health: {
+    database: string;
+    providers: Record<string, boolean>;
+    provider_labels: Record<string, string>;
+    live_provider: boolean;
+  };
+  system: SystemStats;
+  tasks: {
+    metrics: TaskMetrics;
+    recent: TaskSummary[];
+    active: TaskSummary[];
+    pending_approvals: PendingApproval[];
+  };
+  usage: {
+    summary: UsageSummary;
+    series: UsagePoint[];
+    breakdown: {
+      providers: UsageBreakdown[];
+      models: UsageBreakdown[];
+    };
+  };
+  activity: TaskEvent[];
+  models: DashboardModels;
+  agents: Agent[];
+};

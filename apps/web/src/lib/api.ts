@@ -3,6 +3,7 @@ import type {
   ChatEvent,
   CryptoChart,
   CryptoMarket,
+  DashboardOverview,
   MemoryItem,
   ModelHubOverview,
   ModelInfo,
@@ -345,4 +346,8 @@ export async function getCryptoChart(
   days = 7,
 ): Promise<CryptoChart> {
   return apiGet(`/api/v1/intel/markets/crypto/${coin}/chart?days=${days}`);
+}
+
+export async function getDashboardOverview(): Promise<DashboardOverview> {
+  return apiGet("/api/v1/dashboard/overview");
 }

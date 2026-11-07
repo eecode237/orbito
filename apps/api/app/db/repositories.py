@@ -370,6 +370,19 @@ async def list_task_events(task_id: str, limit: int = 500) -> list[TaskEvent]:
         return []
 
 
+async def list_recent_events(limit: int = 20) -> list[TaskEvent]:
+    """Latest execution events across every task, newest first."""
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(TaskEvent).order_by(TaskEvent.created_at.desc()).limit(limit)
+            )
+            return list(result.scalars())
+    except Exception as exc:
+        logger.warning("recent event list failed: %s", exc)
+        return []
+
+
 async def task_usage(task_id: str) -> dict[str, Any]:
     try:
         async with SessionLocal() as session:
@@ -530,6 +543,81 @@ async def usage_summary(user_id: str = DEMO_USER_ID) -> dict[str, Any]:
             "total_tokens": 0,
             "cost_usd": 0.0,
         }
+
+
+async def usage_timeseries(
+    user_id: str = DEMO_USER_ID, days: int = 14
+) -> list[dict[str, Any]]:
+    """Daily usage buckets. Empty days are omitted, never filled with zeros."""
+    try:
+        async with SessionLocal() as session:
+            day = func.date(ModelUsage.created_at)
+            result = await session.execute(
+                select(
+                    day.label("day"),
+                    func.count(ModelUsage.id),
+                    func.coalesce(func.sum(ModelUsage.prompt_tokens), 0),
+                    func.coalesce(func.sum(ModelUsage.completion_tokens), 0),
+                    func.coalesce(func.sum(ModelUsage.cost_usd), 0.0),
+                )
+                .where(ModelUsage.user_id == user_id)
+                .group_by(day)
+                .order_by(day.asc())
+            )
+            rows = list(result.all())[-max(1, days) :]
+            return [
+                {
+                    "date": str(row[0]),
+                    "requests": int(row[1] or 0),
+                    "prompt_tokens": int(row[2] or 0),
+                    "completion_tokens": int(row[3] or 0),
+                    "total_tokens": int(row[2] or 0) + int(row[3] or 0),
+                    "cost_usd": round(float(row[4] or 0.0), 6),
+                }
+                for row in rows
+            ]
+    except Exception as exc:
+        logger.warning("usage timeseries failed: %s", exc)
+        return []
+
+
+async def usage_breakdown(user_id: str = DEMO_USER_ID) -> dict[str, Any]:
+    """Requests and tokens grouped by provider and by model."""
+    try:
+        async with SessionLocal() as session:
+
+            async def grouped(column):
+                result = await session.execute(
+                    select(
+                        column,
+                        func.count(ModelUsage.id),
+                        func.coalesce(
+                            func.sum(ModelUsage.prompt_tokens + ModelUsage.completion_tokens),
+                            0,
+                        ),
+                        func.coalesce(func.sum(ModelUsage.cost_usd), 0.0),
+                    )
+                    .where(ModelUsage.user_id == user_id)
+                    .group_by(column)
+                    .order_by(func.count(ModelUsage.id).desc())
+                )
+                return [
+                    {
+                        "name": str(row[0]),
+                        "requests": int(row[1] or 0),
+                        "tokens": int(row[2] or 0),
+                        "cost_usd": round(float(row[3] or 0.0), 6),
+                    }
+                    for row in result.all()
+                ]
+
+            return {
+                "providers": await grouped(ModelUsage.provider),
+                "models": await grouped(ModelUsage.model),
+            }
+    except Exception as exc:
+        logger.warning("usage breakdown failed: %s", exc)
+        return {"providers": [], "models": []}
 
 
 # --- scraping ---------------------------------------------------------------

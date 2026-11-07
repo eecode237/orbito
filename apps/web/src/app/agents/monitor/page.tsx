@@ -31,6 +31,14 @@ export default function AgentMonitorPage() {
   const [streamPaused, setStreamPaused] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
+  useEffect(() => {
+    const kickoff = setTimeout(() => {
+      const requested = new URLSearchParams(window.location.search).get("task");
+      if (requested) setSelectedTaskId(requested);
+    }, 0);
+    return () => clearTimeout(kickoff);
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       const [agentsData, tasksData, metricsData] = await Promise.all([

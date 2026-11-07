@@ -73,14 +73,16 @@ function newId() {
 export function ChatView({
   initialQuery = "",
   initialAgent = "auto",
+  initialModelRole = "",
 }: {
   initialQuery?: string;
   initialAgent?: string;
+  initialModelRole?: string;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [agentSlug, setAgentSlug] = useState(initialAgent || "auto");
-  const [modelRole, setModelRole] = useState("");
+  const [modelRole, setModelRole] = useState(initialModelRole);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [steps, setSteps] = useState<TaskStep[]>([]);
   const [activeAgent, setActiveAgent] = useState<Agent | null>(null);

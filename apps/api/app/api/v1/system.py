@@ -150,6 +150,34 @@ async def acknowledge_alert(alert_id: str, decision: AlertDecision) -> dict[str,
     return alert_service.acknowledge(alert_id, decision.acknowledged)
 
 
+@router.get("/logs")
+async def logs(limit: int = Query(default=80, ge=1, le=300)) -> dict[str, Any]:
+    """Recent execution/system events (task events) for the system monitor."""
+    try:
+        events = await repo.list_recent_events(limit=limit)
+    except Exception:
+        events = []
+    items = []
+    for event in events:
+        created = getattr(event, "created_at", None)
+        if created is not None and hasattr(created, "isoformat"):
+            created = created.isoformat()
+        items.append(
+            {
+                "id": getattr(event, "id", ""),
+                "task_id": getattr(event, "task_id", ""),
+                "kind": getattr(event, "kind", ""),
+                "level": getattr(event, "level", "info"),
+                "message": getattr(event, "message", ""),
+                "detail": getattr(event, "detail", None),
+                "step_index": getattr(event, "step_index", None),
+                "data": getattr(event, "data", None) or {},
+                "created_at": created,
+            }
+        )
+    return {"events": items, "count": len(items), "limit": limit}
+
+
 # --- compatibility with the first dashboard widgets -------------------------
 
 

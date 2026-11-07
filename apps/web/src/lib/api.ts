@@ -293,6 +293,10 @@ export async function getSystemAlerts(): Promise<SystemAlerts> {
   return apiGet("/api/v1/system/alerts");
 }
 
+export async function getSystemLogs(limit = 80): Promise<{ events: TaskEvent[]; count: number; limit: number }> {
+  return apiGet(`/api/v1/system/logs?limit=${limit}`);
+}
+
 export async function getWorkspaces(): Promise<WorkspaceOverview> {
   return apiGet("/api/v1/workspaces");
 }
@@ -350,4 +354,58 @@ export async function getCryptoChart(
 
 export async function getDashboardOverview(): Promise<DashboardOverview> {
   return apiGet("/api/v1/dashboard/overview");
+}
+
+export type ConversationSummary = {
+  id: string;
+  title: string | null;
+  agent: string | null;
+  model_role?: string | null;
+  updated_at: string | null;
+};
+
+export type ConversationMessage = {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  agent?: string | null;
+  model?: string | null;
+  created_at?: string | null;
+};
+
+export async function getConversations(limit = 40): Promise<{ conversations: ConversationSummary[] }> {
+  return apiGet(`/api/v1/conversations?limit=${limit}`);
+}
+
+export async function getConversationMessages(
+  conversationId: string,
+): Promise<{ conversation: ConversationSummary & { messages?: ConversationMessage[] }; messages?: ConversationMessage[] }> {
+  return apiGet(`/api/v1/conversations/${conversationId}/messages`);
+}
+
+export async function getSystemHistory(range = "15m", points = 120): Promise<{
+  range: string;
+  seconds: number;
+  points: Array<{
+    timestamp: string;
+    cpu_percent: number;
+    memory_percent: number;
+    swap_percent: number;
+    disk_percent: number;
+    temperature_c: number | null;
+    battery_percent: number | null;
+    read_bytes_per_sec: number | null;
+    write_bytes_per_sec: number | null;
+    recv_bytes_per_sec: number | null;
+    sent_bytes_per_sec: number | null;
+    gpu_percent: number | null;
+  }>;
+  count: number;
+  generated_at: string;
+}> {
+  return apiGet(`/api/v1/system/history?range=${encodeURIComponent(range)}&points=${points}`);
+}
+
+export async function getSystemOverview(): Promise<Record<string, unknown>> {
+  return apiGet("/api/v1/system/overview");
 }

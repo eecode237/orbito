@@ -425,6 +425,7 @@ export type CryptoMarket = {
   assets: CryptoAsset[];
   generated_at: string;
   provider: string;
+  stale?: boolean;
 };
 
 export type CryptoChartPoint = {
@@ -440,6 +441,7 @@ export type CryptoChart = {
   currency: string;
   points: CryptoChartPoint[];
   generated_at: string;
+  stale?: boolean;
 };
 
 export type UsagePoint = {

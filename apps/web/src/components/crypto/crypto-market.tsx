@@ -63,8 +63,12 @@ export function CryptoMarketView() {
     getCryptoMarket()
       .then((data) => {
         if (!alive) return;
-        setMarket(data);
-        setError(data.reachable ? null : (data.error ?? "Market data is unreachable."));
+        if (data.reachable || data.assets?.length) {
+          setMarket(data);
+          setError(data.stale ? (data.error ?? "Showing cached market data (rate limited).") : null);
+        } else {
+          setError(data.error ?? "Market data is unreachable.");
+        }
       })
       .catch((cause) => {
         if (!alive) return;
@@ -84,8 +88,12 @@ export function CryptoMarketView() {
     getCryptoChart(coin, Number(days))
       .then((data) => {
         if (!alive) return;
-        setChart(data);
-        setChartError(data.reachable ? null : (data.error ?? "Price history is unreachable."));
+        if (data.reachable || data.points?.length) {
+          setChart(data);
+          setChartError(data.stale ? (data.error ?? "Showing cached price history.") : null);
+        } else {
+          setChartError(data.error ?? "Price history is unreachable.");
+        }
       })
       .catch((cause) => {
         if (!alive) return;
@@ -104,11 +112,21 @@ export function CryptoMarketView() {
     setRefreshing(true);
     getCryptoMarket()
       .then((data) => {
-        setMarket(data);
-        setError(data.reachable ? null : (data.error ?? "Market data is unreachable."));
+        if (data.reachable || data.assets?.length) {
+          setMarket(data);
+          setError(data.stale ? (data.error ?? "Showing cached market data (rate limited).") : null);
+        } else if (!market?.assets?.length) {
+          setError(data.error ?? "Market data is unreachable.");
+        } else {
+          setError(data.error ?? "Refresh failed; showing cached data.");
+        }
       })
       .catch((cause) => {
-        setError(cause instanceof Error ? cause.message : "Market data is unreachable.");
+        if (!market?.assets?.length) {
+          setError(cause instanceof Error ? cause.message : "Market data is unreachable.");
+        } else {
+          setError(cause instanceof Error ? `Refresh failed; showing cached data. ${cause.message}` : "Refresh failed; showing cached data.");
+        }
       })
       .finally(() => setRefreshing(false));
   }
@@ -257,7 +275,7 @@ export function CryptoMarketView() {
             Crypto prices, <span className="text-gradient">observed not predicted.</span>
           </>
         }
-        description="Live market snapshots and price history from the CoinGecko public API through the ORBITO backend proxy. Cards and charts stay empty when the upstream is unreachable; no synthetic prices are generated."
+        description="Live market snapshots and price history from the CoinGecko public API through the ORBITO backend proxy. Cached data is shown when the upstream is rate-limited; no synthetic prices are generated."
         icon={<Bitcoin className="h-5 w-5" />}
         actions={
           <Button
@@ -272,8 +290,8 @@ export function CryptoMarketView() {
         }
       >
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={market?.reachable ? "success" : "error"} dot>
-            {market?.reachable ? market.provider : "Market feed unreachable"}
+          <Badge tone={market?.stale ? "warning" : market?.reachable || assets.length ? "success" : "error"} dot>
+            {market?.stale ? "Cached (rate limited)" : market?.reachable || assets.length ? market?.provider ?? "Market feed" : "Market feed unreachable"}
           </Badge>
           <Badge tone="neutral">USD</Badge>
           <Badge tone="neutral">
@@ -281,6 +299,18 @@ export function CryptoMarketView() {
           </Badge>
         </div>
       </PageHeader>
+
+      {error && assets.length ? (
+        <Card className="border-warning/30 bg-warning/[0.05]">
+          <CardContent className="flex items-start gap-3 py-3">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <div>
+              <p className="text-[12.5px] font-medium text-foreground">Showing cached market data</p>
+              <p className="mt-0.5 font-mono text-[10.5px] text-warning/90">{error}</p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {error && !assets.length ? (
         <Card className="border-error/30 bg-error/[0.05]">
@@ -370,15 +400,20 @@ export function CryptoMarketView() {
       <Card>
         <CardHeader
           title={`${selected?.name ?? "Bitcoin"} price history`}
-          description={`USD · ${RANGES.find((range) => range.id === days)?.label ?? days} window`}
+          description={`USD · ${RANGES.find((range) => range.id === days)?.label ?? days} window${chart?.stale ? " · cached" : ""}`}
           actions={
             <Segmented options={RANGES} value={days} onChange={selectDays} />
           }
         />
         <CardContent>
+          {chartError && series.length ? (
+            <p className="mb-2 rounded-md border border-warning/25 bg-warning/[0.05] px-2 py-1 text-[10px] text-warning/90">
+              {chartError}
+            </p>
+          ) : null}
           {chartLoading ? (
             <div className="shimmer h-[300px] rounded-lg bg-foreground/[0.04]" />
-          ) : chartError || !series.length ? (
+          ) : !series.length ? (
             <EmptyState
               icon={ChartCandlestick}
               title="Price history is unavailable"
@@ -394,7 +429,7 @@ export function CryptoMarketView() {
             </div>
           )}
           <p className="mt-2 text-[10px] text-foreground-muted">
-            Observed prices only. History is cached for five minutes. Not financial advice.
+            Observed prices only. History is cached and served stale on rate limits. Not financial advice.
           </p>
         </CardContent>
       </Card>

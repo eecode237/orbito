@@ -376,3 +376,68 @@ export type WorkspaceSearch = {
   scanned: number;
   limit_reached: boolean;
 };
+
+export type NewsArticle = {
+  id: string;
+  title: string;
+  url: string;
+  summary: string;
+  source: string;
+  category: string;
+  published_at: string | null;
+};
+
+export type NewsSourceStatus = {
+  name: string;
+  category: string;
+  reachable: boolean;
+  error: string | null;
+  count: number;
+};
+
+export type NewsFeed = {
+  category: string;
+  articles: NewsArticle[];
+  sources: NewsSourceStatus[];
+  reachable: boolean;
+  generated_at: string;
+  notice: string;
+};
+
+export type CryptoAsset = {
+  id: string;
+  symbol: string;
+  name: string;
+  image: string | null;
+  price_usd: number | null;
+  market_cap_usd: number | null;
+  rank: number | null;
+  volume_24h_usd: number | null;
+  change_24h_percent: number | null;
+  sparkline: number[];
+  last_updated: string | null;
+};
+
+export type CryptoMarket = {
+  reachable: boolean;
+  error: string | null;
+  currency: string;
+  assets: CryptoAsset[];
+  generated_at: string;
+  provider: string;
+};
+
+export type CryptoChartPoint = {
+  t: number;
+  price: number;
+};
+
+export type CryptoChart = {
+  reachable: boolean;
+  error: string | null;
+  coin: string;
+  days: number;
+  currency: string;
+  points: CryptoChartPoint[];
+  generated_at: string;
+};

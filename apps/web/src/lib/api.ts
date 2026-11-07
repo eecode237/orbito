@@ -1,9 +1,12 @@
 import type {
   Agent,
   ChatEvent,
+  CryptoChart,
+  CryptoMarket,
   MemoryItem,
   ModelHubOverview,
   ModelInfo,
+  NewsFeed,
   ProviderStatus,
   PullEvent,
   ScrapingJob,
@@ -319,4 +322,27 @@ export async function searchWorkspace(
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   if (root) params.set("root", root);
   return apiGet(`/api/v1/workspaces/search?${params.toString()}`);
+}
+
+export async function getNews(category = "all", limit = 30): Promise<NewsFeed> {
+  const params = new URLSearchParams({ category, limit: String(limit) });
+  return apiGet(`/api/v1/intel/news?${params.toString()}`);
+}
+
+export async function getNewsSources(): Promise<{
+  sources: { name: string; url: string; category: string }[];
+  method: string;
+}> {
+  return apiGet("/api/v1/intel/sources");
+}
+
+export async function getCryptoMarket(): Promise<CryptoMarket> {
+  return apiGet("/api/v1/intel/markets/crypto");
+}
+
+export async function getCryptoChart(
+  coin: string,
+  days = 7,
+): Promise<CryptoChart> {
+  return apiGet(`/api/v1/intel/markets/crypto/${coin}/chart?days=${days}`);
 }

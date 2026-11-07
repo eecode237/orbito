@@ -8,6 +8,7 @@ from app.api.v1 import (
     conversations,
     files,
     health,
+    intel,
     memory,
     model_hub,
     scraping,
@@ -28,5 +29,6 @@ api_router.include_router(conversations.router)
 api_router.include_router(memory.router)
 api_router.include_router(scraping.router)
 api_router.include_router(files.router)
+api_router.include_router(intel.router)
 
 __all__ = ["api_router"]

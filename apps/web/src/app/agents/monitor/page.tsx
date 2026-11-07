@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 
@@ -31,7 +31,7 @@ export default function AgentMonitorPage() {
   const [streamPaused, setStreamPaused] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     try {
       const [agentsData, tasksData, metricsData] = await Promise.all([
         getAgents(),
@@ -44,13 +44,11 @@ export default function AgentMonitorPage() {
       setLive(true);
       setUpdatedAt(new Date().toISOString());
 
-      if (!selectedTaskId && tasksData.tasks.length > 0) {
-        setSelectedTaskId(tasksData.tasks[0].id);
-      }
+      setSelectedTaskId((current) => current ?? tasksData.tasks[0]?.id ?? null);
     } catch {
       setLive(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     const kickoff = setTimeout(() => void refresh(), 0);
@@ -59,7 +57,7 @@ export default function AgentMonitorPage() {
       clearTimeout(kickoff);
       clearInterval(interval);
     };
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     if (!selectedTaskId) {

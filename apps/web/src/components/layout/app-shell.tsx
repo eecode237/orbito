@@ -19,11 +19,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
-    try {
-      setCollapsed(localStorage.getItem(SIDEBAR_KEY) === "1");
-    } catch {
-      // Ignore storage failures.
-    }
+    const timer = setTimeout(() => {
+      try {
+        setCollapsed(localStorage.getItem(SIDEBAR_KEY) === "1");
+      } catch {
+        // Ignore storage failures.
+      }
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   function toggleCollapsed() {

@@ -258,3 +258,108 @@ export function TelemetryAreaChart({
     </ResponsiveContainer>
   );
 }
+
+export type PricePoint = {
+  label: string;
+  price: number;
+};
+
+export function PriceAreaChart({
+  data,
+  tone = "success",
+}: {
+  data: PricePoint[];
+  tone?: "success" | "error" | "primary";
+}) {
+  const stroke =
+    tone === "error"
+      ? "var(--error)"
+      : tone === "primary"
+        ? "var(--primary)"
+        : "var(--success)";
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={data} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
+        <defs>
+          <linearGradient id={`price-fill-${tone}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={stroke} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={stroke} stopOpacity={0.01} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid stroke="var(--border-subtle)" strokeDasharray="3 3" vertical={false} />
+        <XAxis dataKey="label" tick={axisStyle} axisLine={false} tickLine={false} minTickGap={28} />
+        <YAxis
+          tick={axisStyle}
+          axisLine={false}
+          tickLine={false}
+          width={58}
+          domain={["auto", "auto"]}
+          tickFormatter={(value: number) =>
+            value >= 1000
+              ? `${(value / 1000).toFixed(1)}k`
+              : value >= 1
+                ? value.toFixed(0)
+                : value.toFixed(3)
+          }
+        />
+        <Tooltip
+          content={
+            <ChartTooltip
+              formatter={(value) =>
+                value >= 1
+                  ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                  : `$${value.toFixed(4)}`
+              }
+            />
+          }
+        />
+        <Area
+          type="monotone"
+          dataKey="price"
+          name="Price"
+          stroke={stroke}
+          strokeWidth={1.7}
+          fill={`url(#price-fill-${tone})`}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function SparklineChart({
+  values,
+  positive = true,
+  width = 96,
+  height = 28,
+}: {
+  values: number[];
+  positive?: boolean;
+  width?: number;
+  height?: number;
+}) {
+  if (!values.length) {
+    return <span className="font-mono text-[9px] text-foreground-muted">—</span>;
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const points = values
+    .map((value, index) => {
+      const x = (index / Math.max(1, values.length - 1)) * width;
+      const y = height - ((value - min) / span) * (height - 4) - 2;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const color = positive ? "var(--success)" : "var(--error)";
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className="overflow-visible"
+      aria-hidden
+    >
+      <polyline points={points} fill="none" stroke={color} strokeWidth={1.4} strokeLinejoin="round" />
+    </svg>
+  );
+}

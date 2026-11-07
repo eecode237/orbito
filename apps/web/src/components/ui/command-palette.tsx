@@ -110,9 +110,7 @@ export function CommandPalette({
     return () => clearTimeout(timer);
   }, [open]);
 
-  useEffect(() => {
-    if (active >= filtered.length) setActive(0);
-  }, [filtered.length, active]);
+  const activeIndex = filtered.length ? Math.min(active, filtered.length - 1) : 0;
 
   if (!open) return null;
 
@@ -142,7 +140,10 @@ export function CommandPalette({
           <input
             ref={inputRef}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setActive(0);
+            }}
             onKeyDown={(event) => {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -154,7 +155,7 @@ export function CommandPalette({
               }
               if (event.key === "Enter") {
                 event.preventDefault();
-                choose(filtered[active]);
+                choose(filtered[activeIndex]);
               }
               if (event.key === "Escape") onClose();
             }}
@@ -174,7 +175,7 @@ export function CommandPalette({
                 onClick={() => choose(command)}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
-                  index === active ? "bg-primary/10 text-foreground" : "text-foreground-secondary hover:bg-foreground/5",
+                  index === activeIndex ? "bg-primary/10 text-foreground" : "text-foreground-secondary hover:bg-foreground/5",
                 )}
               >
                 <span
@@ -198,7 +199,7 @@ export function CommandPalette({
                 <span className="shrink-0 text-[9px] uppercase tracking-wide text-foreground-muted">
                   {command.group}
                 </span>
-                {index === active ? <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-foreground-muted" /> : null}
+                {index === activeIndex ? <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-foreground-muted" /> : null}
               </button>
             ))
           ) : (

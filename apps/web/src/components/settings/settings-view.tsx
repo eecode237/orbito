@@ -18,7 +18,7 @@ import {
   UserRound,
 } from "lucide-react";
 
-import { ModelHub } from "@/components/settings/model-hub";
+import { ModelHub } from "@/components/models/model-hub";
 import { apiSend, getMemories, getModels, getTasks, getUsage } from "@/lib/api";
 import type { MemoryItem, ModelInfo, ProviderStatus, TaskSummary, UsageSummary } from "@/lib/types";
 import { cn, compactNumber, formatCost, formatRelative } from "@/lib/utils";

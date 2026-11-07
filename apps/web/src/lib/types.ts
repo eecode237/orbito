@@ -264,6 +264,22 @@ export type PullEvent =
   | { type: "done"; model: string }
   | { type: "error"; model: string; error: string };
 
+export type ModelLibraryResult = {
+  name: string;
+  description?: string;
+  pulls?: number | string | null;
+  tags?: unknown;
+  updated_at?: string | null;
+  installed: boolean;
+};
+
+export type ModelLibrarySearch = {
+  reachable: boolean;
+  query: string;
+  results: ModelLibraryResult[];
+  error: string | null;
+};
+
 export type SystemAlert = {
   id: string;
   level: "critical" | "warning" | "info";

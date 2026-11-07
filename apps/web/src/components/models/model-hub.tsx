@@ -7,11 +7,13 @@ import {
   CircleCheck,
   Cpu,
   Download,
+  ExternalLink,
   HardDrive,
   Info,
   Loader2,
   MemoryStick,
   RefreshCw,
+  Search,
   Server,
   Sparkles,
   Trash2,
@@ -21,8 +23,8 @@ import { OrbitoBarChart, OrbitoPieChart, type ChartConfig } from "@/components/c
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { deleteLocalModel, getModelHub, pullModel } from "@/lib/api";
-import type { ModelHubOverview, PullEvent } from "@/lib/types";
+import { deleteLocalModel, getModelHub, pullModel, searchModelLibrary } from "@/lib/api";
+import type { ModelHubOverview, ModelLibraryResult, PullEvent } from "@/lib/types";
 import { cn, formatBytes } from "@/lib/utils";
 
 function fmtBytes(value: number): string {
@@ -39,6 +41,11 @@ export function ModelHub() {
   const [pullError, setPullError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [libraryResults, setLibraryResults] = useState<ModelLibraryResult[] | null>(null);
+  const [librarySearching, setLibrarySearching] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [libraryReachable, setLibraryReachable] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -90,6 +97,25 @@ export function ModelHub() {
       setPullError(err instanceof Error ? err.message : `Could not delete ${name}.`);
     } finally {
       setRemoving(null);
+    }
+  }
+
+  async function runLibrarySearch(queryOverride?: string) {
+    const q = (queryOverride ?? libraryQuery).trim();
+    setLibrarySearching(true);
+    setLibraryError(null);
+    try {
+      const res = await searchModelLibrary(q, 24);
+      setLibraryReachable(res.reachable);
+      setLibraryResults(res.results);
+      if (!res.reachable) setLibraryError(res.error || "Remote library search is unavailable.");
+      else if (res.error) setLibraryError(res.error);
+    } catch (err) {
+      setLibraryReachable(false);
+      setLibraryResults([]);
+      setLibraryError(err instanceof Error ? err.message : "Library search failed.");
+    } finally {
+      setLibrarySearching(false);
     }
   }
 
@@ -295,9 +321,74 @@ export function ModelHub() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader
+          title="Find models in Ollama library"
+          description="Search remote Ollama models not available locally, then download to Ollama’s default model storage via the local daemon."
+          icon={<Search className="h-3.5 w-3.5" />}
+          actions={
+            <a href="https://ollama.com/library" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] text-foreground-muted hover:text-foreground">
+              Browse library <ExternalLink className="h-3 w-3" />
+            </a>
+          }
+        />
+        <CardContent>
+          <form onSubmit={(e) => { e.preventDefault(); void runLibrarySearch(); }} className="flex gap-2">
+            <input
+              value={libraryQuery}
+              onChange={(e) => setLibraryQuery(e.target.value)}
+              placeholder="Search (e.g. llama, qwen, mistral, embedding)…"
+              spellCheck={false}
+              className="h-9 min-w-0 flex-1 rounded-xl border border-border bg-surface-inset px-3 font-mono text-[12px] text-foreground outline-none placeholder:text-foreground-muted focus:border-primary/50"
+            />
+            <Button type="submit" variant="secondary" size="sm" disabled={librarySearching}>
+              {librarySearching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />} Search
+            </Button>
+          </form>
+          {libraryError ? (
+            <div className="mt-3 rounded-xl border border-warning/25 bg-warning/[0.05] p-3 text-[11px] text-foreground-secondary">
+              <p className="font-medium text-warning">Remote search unavailable</p>
+              <p className="mt-1">{libraryError}</p>
+              <p className="mt-1 text-foreground-muted">You can still type any model name (e.g. <span className="font-mono">llama3.2:3b</span>) in “Download a model” above and pull it — Ollama will download it to its default model folder.</p>
+            </div>
+          ) : null}
+          {libraryResults && libraryResults.length > 0 ? (
+            <div className="mt-3 divide-y divide-border-subtle rounded-xl border border-border-subtle">
+              {libraryResults.map((item) => {
+                const installedNow = item.installed || installed.some((m) => m.name === item.name || m.name?.startsWith(item.name.split(":")[0] + ":") || item.name.startsWith((m.name || "").split(":")[0]));
+                return (
+                  <div key={item.name} className="flex flex-wrap items-start justify-between gap-3 px-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[12px] font-medium text-foreground">{item.name}</span>
+                        {installedNow ? <Badge tone="success">Installed locally</Badge> : <Badge tone="neutral">Not installed locally</Badge>}
+                      </div>
+                      {item.description ? <p className="mt-0.5 line-clamp-2 text-[10.5px] text-foreground-muted">{item.description}</p> : null}
+                      {item.pulls != null ? <p className="mt-0.5 text-[10px] text-foreground-muted">Pulls: {String(item.pulls)}</p> : null}
+                    </div>
+                    <Button
+                      variant={installedNow ? "secondary" : "primary"}
+                      size="sm"
+                      onClick={() => void startPull(item.name)}
+                      disabled={Boolean(pulling) || !ollama?.reachable}
+                      title={installedNow ? "Download/update via Ollama" : "Download to Ollama default model folder"}
+                    >
+                      {pulling?.name === item.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                      {installedNow ? "Pull again" : "Download"}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : libraryResults && libraryResults.length === 0 && libraryReachable ? (
+            <p className="mt-3 text-[11px] text-foreground-muted">No models found for “{libraryQuery}”. Try a different name, or enter the exact model tag in “Download a model”.</p>
+          ) : null}
+        </CardContent>
+      </Card>
+
       <div className="flex items-start gap-2 rounded-xl border border-border-subtle bg-surface-inset px-3 py-2.5 text-[11px] text-foreground-secondary">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground-muted" />
-        <p>Local models never leave this machine. Download progress and model lists come from real Ollama APIs; nothing is simulated.</p>
+        <p>Local models never leave this machine. Downloads are handled by your local Ollama daemon and stored in Ollama’s default model folder. Remote search is best-effort; you can always pull any valid model name directly.</p>
       </div>
     </div>
   );

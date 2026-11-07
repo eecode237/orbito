@@ -7,6 +7,7 @@ import type {
   MemoryItem,
   ModelHubOverview,
   ModelInfo,
+  ModelLibrarySearch,
   NewsFeed,
   ProviderStatus,
   PullEvent,
@@ -285,6 +286,11 @@ export async function pullModel(
   }
 
   await readSse<PullEvent>(response, onEvent);
+}
+
+export async function searchModelLibrary(query: string, limit = 20): Promise<ModelLibrarySearch> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return apiGet(`/api/v1/model-hub/search?${params.toString()}`);
 }
 
 export async function getSystemStats(): Promise<SystemStats> {

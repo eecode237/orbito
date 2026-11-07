@@ -79,6 +79,15 @@ async def show(name: str = Query(min_length=1, max_length=128)) -> dict[str, Any
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.get("/search")
+async def search_library(
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> dict[str, Any]:
+    """Search public Ollama library (best-effort). Returns honest unavailable state on failure."""
+    return await hub.search_library(q, limit=limit)
+
+
 @router.post("/pull")
 async def pull(payload: PullRequest, request: Request) -> StreamingResponse:
     name = payload.name.strip()

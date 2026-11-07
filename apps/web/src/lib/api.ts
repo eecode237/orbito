@@ -141,6 +141,20 @@ export async function streamChat(
   await readSse<ChatEvent>(response, onEvent);
 }
 
+export type Health = {
+  status: string;
+  app: string;
+  version: string;
+  env: string;
+  database: string;
+  providers: Record<string, boolean>;
+  live_provider: boolean;
+};
+
+export async function getHealth(): Promise<Health> {
+  return apiGet("/api/v1/health");
+}
+
 export async function getAgents(): Promise<{ agents: Agent[]; tools: unknown[] }> {
   return apiGet("/api/v1/agents");
 }

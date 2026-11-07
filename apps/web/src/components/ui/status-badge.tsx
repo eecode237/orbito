@@ -1,24 +1,27 @@
 import { cn } from "@/lib/utils";
 
 const STATUS_STYLES: Record<string, string> = {
-  running: "border-sky/25 bg-sky/10 text-sky",
-  active: "border-sky/25 bg-sky/10 text-sky",
-  completed: "border-mint/25 bg-mint/10 text-mint",
-  success: "border-mint/25 bg-mint/10 text-mint",
-  done: "border-mint/25 bg-mint/10 text-mint",
-  paused: "border-amber/25 bg-amber/10 text-amber",
-  waiting: "border-amber/25 bg-amber/10 text-amber",
-  warning: "border-amber/25 bg-amber/10 text-amber",
-  queued: "border-violet/25 bg-violet/10 text-violet-soft",
-  pending: "border-white/10 bg-white/[0.04] text-white/45",
-  skipped: "border-white/10 bg-white/[0.03] text-white/30",
-  failed: "border-rose/25 bg-rose/10 text-rose",
-  error: "border-rose/25 bg-rose/10 text-rose",
-  cancelled: "border-white/10 bg-white/[0.03] text-white/35",
-  info: "border-sky/20 bg-sky/[0.07] text-sky",
-  tool: "border-violet/25 bg-violet/10 text-violet-soft",
-  model: "border-mint/20 bg-mint/[0.07] text-mint",
-  agent: "border-sky/20 bg-sky/[0.07] text-sky",
+  running: "border-info/30 bg-info/10 text-info",
+  active: "border-info/30 bg-info/10 text-info",
+  completed: "border-success/30 bg-success/10 text-success",
+  success: "border-success/30 bg-success/10 text-success",
+  done: "border-success/30 bg-success/10 text-success",
+  paused: "border-warning/30 bg-warning/10 text-warning",
+  waiting: "border-warning/30 bg-warning/10 text-warning",
+  warning: "border-warning/30 bg-warning/10 text-warning",
+  queued: "border-primary/30 bg-primary/10 text-primary-hover",
+  pending: "border-border bg-foreground/[0.04] text-foreground-muted",
+  skipped: "border-border-subtle bg-foreground/[0.03] text-foreground-muted",
+  failed: "border-error/30 bg-error/10 text-error",
+  error: "border-error/30 bg-error/10 text-error",
+  cancelled: "border-border bg-foreground/[0.03] text-foreground-muted",
+  info: "border-info/25 bg-info/[0.08] text-info",
+  tool: "border-primary/30 bg-primary/10 text-primary-hover",
+  model: "border-success/25 bg-success/[0.08] text-success",
+  agent: "border-info/25 bg-info/[0.08] text-info",
+  idle: "border-border bg-foreground/[0.03] text-foreground-muted",
+  offline: "border-error/25 bg-error/[0.08] text-error",
+  connected: "border-success/30 bg-success/10 text-success",
 };
 
 export function StatusBadge({
@@ -32,7 +35,7 @@ export function StatusBadge({
   pulse?: boolean;
   className?: string;
 }) {
-  const style = STATUS_STYLES[status] ?? STATUS_STYLES.pending;
+  const style = STATUS_STYLES[status.toLowerCase()] ?? STATUS_STYLES.pending;
   return (
     <span
       className={cn(
@@ -41,7 +44,7 @@ export function StatusBadge({
         className,
       )}
     >
-      {pulse || status === "running" ? (
+      {pulse || status === "running" || status === "active" ? (
         <span className="h-1 w-1 animate-pulse rounded-full bg-current" />
       ) : null}
       {label ?? status}

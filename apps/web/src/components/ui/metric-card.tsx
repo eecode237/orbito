@@ -2,6 +2,29 @@ import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+const tones = {
+  violet: {
+    icon: "text-primary-hover bg-primary/10 border-primary/20",
+    value: "text-foreground",
+  },
+  mint: {
+    icon: "text-success bg-success/10 border-success/20",
+    value: "text-foreground",
+  },
+  sky: {
+    icon: "text-info bg-info/10 border-info/20",
+    value: "text-foreground",
+  },
+  amber: {
+    icon: "text-warning bg-warning/10 border-warning/20",
+    value: "text-foreground",
+  },
+  rose: {
+    icon: "text-error bg-error/10 border-error/20",
+    value: "text-foreground",
+  },
+};
+
 export function MetricCard({
   icon: Icon,
   label,
@@ -14,31 +37,23 @@ export function MetricCard({
   label: string;
   value: string | number;
   hint?: string;
-  tone?: "violet" | "mint" | "sky" | "amber" | "rose";
+  tone?: keyof typeof tones;
   className?: string;
 }) {
-  const toneClass = {
-    violet: "text-violet-soft bg-violet/10 border-violet/20",
-    mint: "text-mint bg-mint/10 border-mint/20",
-    sky: "text-sky bg-sky/10 border-sky/20",
-    amber: "text-amber bg-amber/10 border-amber/20",
-    rose: "text-rose bg-rose/10 border-rose/20",
-  }[tone];
+  const style = tones[tone];
 
   return (
-    <div className={cn("glass-soft rounded-xl px-3 py-2.5", className)}>
+    <div className={cn("rounded-lg border border-border bg-surface-inset px-3 py-2.5", className)}>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-white/30">
-          {label}
-        </p>
-        <span className={cn("grid h-6 w-6 place-items-center rounded-lg border", toneClass)}>
+        <p className="type-eyebrow text-foreground-muted">{label}</p>
+        <span className={cn("grid h-6 w-6 place-items-center rounded-md border", style.icon)}>
           <Icon className="h-3 w-3" />
         </span>
       </div>
-      <p className="mt-1.5 font-mono text-[19px] font-medium leading-none text-white/90">
+      <p className={cn("mt-2 font-mono text-[19px] font-medium leading-none", style.value)}>
         {value}
       </p>
-      {hint ? <p className="mt-1 truncate text-[9px] text-white/25">{hint}</p> : null}
+      {hint ? <p className="mt-1.5 truncate text-[9.5px] text-foreground-muted">{hint}</p> : null}
     </div>
   );
 }

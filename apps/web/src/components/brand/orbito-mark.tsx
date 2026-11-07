@@ -2,6 +2,10 @@ import { useId } from "react";
 
 import { cn } from "@/lib/utils";
 
+/**
+ * ORBITO mark — an orbital ring around a central intelligence point.
+ * Uses design tokens so the symbol follows the active theme.
+ */
 export function OrbitMark({ className }: { className?: string }) {
   const id = useId().replace(/:/g, "");
   return (
@@ -13,14 +17,14 @@ export function OrbitMark({ className }: { className?: string }) {
     >
       <defs>
         <linearGradient id={`${id}-a`} x1="6" y1="10" x2="58" y2="54">
-          <stop stopColor="#C4B5FD" />
-          <stop offset="0.45" stopColor="#7C5CFF" />
-          <stop offset="1" stopColor="#38BDF8" />
+          <stop stopColor="var(--primary-soft)" />
+          <stop offset="0.45" stopColor="var(--primary)" />
+          <stop offset="1" stopColor="var(--secondary)" />
         </linearGradient>
         <linearGradient id={`${id}-b`} x1="10" y1="52" x2="54" y2="12">
-          <stop stopColor="#7C5CFF" stopOpacity="0.25" />
-          <stop offset="0.5" stopColor="#A78BFA" />
-          <stop offset="1" stopColor="#3DDC97" stopOpacity="0.85" />
+          <stop stopColor="var(--primary)" stopOpacity="0.25" />
+          <stop offset="0.5" stopColor="var(--primary-hover)" />
+          <stop offset="1" stopColor="var(--success)" stopOpacity="0.85" />
         </linearGradient>
       </defs>
       <ellipse
@@ -45,7 +49,7 @@ export function OrbitMark({ className }: { className?: string }) {
         d="M32 17.5c1.15 6.6 3.9 9.35 10.5 10.5-6.6 1.15-9.35 3.9-10.5 10.5-1.15-6.6-3.9-9.35-10.5-10.5 6.6-1.15 9.35-3.9 10.5-10.5Z"
         fill={`url(#${id}-a)`}
       />
-      <circle cx="32" cy="32" r="3.1" fill="#F5F3FF" />
+      <circle cx="32" cy="32" r="3.1" fill="var(--foreground)" />
     </svg>
   );
 }
@@ -59,25 +63,49 @@ export function Wordmark({
 }) {
   return (
     <div className={cn("flex flex-col leading-none", className)}>
-      <span className="font-display text-[1.35rem] font-bold tracking-[0.2em] text-white">
+      <span className="font-display text-[1.3rem] font-semibold tracking-[0.2em] text-foreground">
         ORBITO
       </span>
       {subtitle ? (
-        <span className="mt-1 text-[0.53rem] font-medium tracking-[0.34em] text-white/40">
-          AI OPERATING SYSTEM
+        <span className="mt-1.5 text-[0.5rem] font-medium tracking-[0.32em] text-foreground-muted">
+          PERSONAL AI OS
         </span>
       ) : null}
     </div>
   );
 }
 
-export function BrandLockup({ className }: { className?: string }) {
+export function BrandMark({
+  size = "md",
+  className,
+}: {
+  size?: "sm" | "md";
+  className?: string;
+}) {
   return (
-    <div className={cn("flex items-center gap-3", className)}>
-      <div className="relative grid h-11 w-11 place-items-center rounded-2xl border border-violet/25 bg-[#100b21] shadow-[0_0_30px_-8px_rgba(124,92,255,0.65)]">
-        <OrbitMark className="h-7 w-7" />
-      </div>
-      <Wordmark />
+    <div
+      className={cn(
+        "relative grid shrink-0 place-items-center rounded-xl border border-primary/25 bg-primary/[0.07] shadow-[0_0_26px_-10px_var(--primary)]",
+        size === "sm" ? "h-8 w-8" : "h-10 w-10",
+        className,
+      )}
+    >
+      <OrbitMark className={size === "sm" ? "h-5 w-5" : "h-6 w-6"} />
+    </div>
+  );
+}
+
+export function BrandLockup({
+  className,
+  compact = false,
+}: {
+  className?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className={cn("flex items-center gap-2.5", className)}>
+      <BrandMark />
+      {!compact ? <Wordmark /> : null}
     </div>
   );
 }

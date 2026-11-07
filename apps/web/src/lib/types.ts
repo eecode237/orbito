@@ -444,6 +444,42 @@ export type CryptoChart = {
   stale?: boolean;
 };
 
+export type StockAsset = {
+  id: string;
+  symbol: string;
+  name: string;
+  exchange?: string | null;
+  currency?: string;
+  price: number | null;
+  previous_close?: number | null;
+  change_percent: number | null;
+  market_cap?: number | null;
+  sparkline: number[];
+  market_state?: string | null;
+  regular_market_time?: number | null;
+};
+
+export type StockMarket = {
+  reachable: boolean;
+  error: string | null;
+  currency: string;
+  assets: StockAsset[];
+  generated_at: string;
+  provider: string;
+  stale?: boolean;
+};
+
+export type StockChart = {
+  reachable: boolean;
+  error: string | null;
+  symbol: string;
+  days: number;
+  currency: string;
+  points: CryptoChartPoint[];
+  generated_at: string;
+  stale?: boolean;
+};
+
 export type UsagePoint = {
   date: string;
   requests: number;

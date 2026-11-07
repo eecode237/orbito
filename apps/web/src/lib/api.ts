@@ -12,6 +12,8 @@ import type {
   PullEvent,
   ScrapingJob,
   ScrapingResult,
+  StockChart,
+  StockMarket,
   SystemAlerts,
   SystemStats,
   TaskEvent,
@@ -352,6 +354,15 @@ export async function getCryptoChart(
   return apiGet(`/api/v1/intel/markets/crypto/${coin}/chart?days=${days}`);
 }
 
+export async function getStockMarket(symbols?: string): Promise<StockMarket> {
+  const q = symbols ? `?symbols=${encodeURIComponent(symbols)}` : "";
+  return apiGet(`/api/v1/intel/markets/stocks${q}`);
+}
+
+export async function getStockChart(symbol: string, days = 30): Promise<StockChart> {
+  return apiGet(`/api/v1/intel/markets/stocks/${encodeURIComponent(symbol)}/chart?days=${days}`);
+}
+
 export async function getDashboardOverview(): Promise<DashboardOverview> {
   return apiGet("/api/v1/dashboard/overview");
 }
@@ -381,6 +392,14 @@ export async function getConversationMessages(
   conversationId: string,
 ): Promise<{ conversation: ConversationSummary & { messages?: ConversationMessage[] }; messages?: ConversationMessage[] }> {
   return apiGet(`/api/v1/conversations/${conversationId}/messages`);
+}
+
+export async function deleteConversation(conversationId: string): Promise<{ deleted: boolean; id: string }> {
+  return apiSend(`/api/v1/conversations/${conversationId}`, "DELETE");
+}
+
+export async function clearConversations(): Promise<{ deleted: boolean; count: number }> {
+  return apiSend("/api/v1/conversations", "DELETE");
 }
 
 export async function getSystemHistory(range = "15m", points = 120): Promise<{

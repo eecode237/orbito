@@ -166,6 +166,9 @@ class IntelCache:
         self._market_at = 0.0
         self._market_next_ok = 0.0
         self._charts: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._stock_market: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._stock_charts: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._stock_next_ok = 0.0
         self._lock = asyncio.Lock()
 
     async def _get_json(
@@ -401,6 +404,197 @@ class IntelCache:
             self._charts[key] = (time.monotonic(), result)
         return result
 
+    async def _get_stock_json(self, url: str, *, params: dict[str, str] | None = None) -> tuple[bool, Any, str | None]:
+        last_err: str | None = None
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+            "Accept": "application/json,text/plain,*/*",
+        }
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=6.0), headers=headers, follow_redirects=True) as client:
+            for attempt in range(MARKET_MAX_RETRIES + 1):
+                try:
+                    response = await client.get(url, params=params)
+                    if response.status_code == 429:
+                        retry = response.headers.get("Retry-After")
+                        try:
+                            wait = min(30.0, max(1.0, float(retry or MARKET_BACKOFF)))
+                        except ValueError:
+                            wait = MARKET_BACKOFF
+                        self._stock_next_ok = time.monotonic() + wait
+                        last_err = "Public stock API rate-limited (429). Showing cached data when available."
+                        if attempt < MARKET_MAX_RETRIES:
+                            await asyncio.sleep(wait)
+                            continue
+                        return False, None, last_err
+                    response.raise_for_status()
+                    return True, response.json(), None
+                except Exception as exc:  # noqa: BLE001
+                    last_err = str(exc)[:180]
+                    if attempt < MARKET_MAX_RETRIES:
+                        await asyncio.sleep(MARKET_BACKOFF * (attempt + 1))
+                        continue
+        return False, None, last_err or "Request failed"
+
+    async def _fetch_stock_symbol(self, symbol: str) -> dict[str, Any] | None:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        ok, payload, _err = await self._get_stock_json(
+            url,
+            params={"range": "5d", "interval": "1d", "includePrePost": "false"},
+        )
+        if not ok or not isinstance(payload, dict):
+            return None
+        result = (((payload.get("chart") or {}).get("result")) or [None])[0]
+        if not isinstance(result, dict):
+            return None
+        meta = result.get("meta") or {}
+        timestamps = result.get("timestamp") or []
+        quote = (((result.get("indicators") or {}).get("quote")) or [{}])[0] or {}
+        closes = [c for c in (quote.get("close") or []) if isinstance(c, (int, float))]
+        price = meta.get("regularMarketPrice")
+        if price is None and closes:
+            price = closes[-1]
+        prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+        if prev is None and len(closes) >= 2:
+            prev = closes[-2]
+        change_pct = None
+        if isinstance(price, (int, float)) and isinstance(prev, (int, float)) and prev:
+            change_pct = ((price - prev) / prev) * 100
+        currency = meta.get("currency") or "USD"
+        return {
+            "id": symbol,
+            "symbol": symbol,
+            "name": meta.get("shortName") or meta.get("longName") or symbol,
+            "exchange": meta.get("exchangeName") or meta.get("fullExchangeName"),
+            "currency": currency,
+            "price": price,
+            "previous_close": prev,
+            "change_percent": change_pct,
+            "market_cap": None,
+            "sparkline": closes[-30:],
+            "market_state": meta.get("marketState"),
+            "regular_market_time": meta.get("regularMarketTime"),
+        }
+
+    async def stock_market(self, symbols: list[str]) -> dict[str, Any]:
+        key = ",".join(symbols)
+        async with self._lock:
+            now = time.monotonic()
+            cached = self._stock_market.get(key)
+            if cached and now - cached[0] < MARKET_CACHE_SECONDS:
+                return cached[1]
+            if cached and now < self._stock_next_ok:
+                return {**cached[1], "stale": True}
+
+        sem = asyncio.Semaphore(4)
+
+        async def one(sym: str) -> dict[str, Any] | None:
+            async with sem:
+                return await self._fetch_stock_symbol(sym)
+
+        rows = await asyncio.gather(*(one(s) for s in symbols))
+        assets = [r for r in rows if r]
+        if assets:
+            result = {
+                "reachable": True,
+                "error": None,
+                "currency": "USD",
+                "assets": assets,
+                "generated_at": datetime.now(UTC).isoformat(),
+                "provider": "Yahoo Finance public chart API",
+                "stale": False,
+            }
+        else:
+            async with self._lock:
+                cached = self._stock_market.get(key)
+            if cached:
+                result = {
+                    **cached[1],
+                    "reachable": True,
+                    "stale": True,
+                    "error": "Stock data temporarily unavailable; showing cached company data when available.",
+                }
+            else:
+                result = {
+                    "reachable": False,
+                    "error": "Stock market data unavailable (public API blocked or rate-limited). No synthetic prices shown.",
+                    "currency": "USD",
+                    "assets": [],
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "provider": "Yahoo Finance public chart API",
+                    "stale": False,
+                }
+
+        async with self._lock:
+            self._stock_market[key] = (time.monotonic(), result)
+            if assets:
+                self._stock_next_ok = time.monotonic() + MARKET_MIN_INTERVAL
+        return result
+
+    async def stock_chart(self, symbol: str, days: int) -> dict[str, Any]:
+        key = f"{symbol}:{days}"
+        async with self._lock:
+            now = time.monotonic()
+            cached = self._stock_charts.get(key)
+            if cached and now - cached[0] < CHART_CACHE_SECONDS:
+                return cached[1]
+            if cached and now < self._stock_next_ok:
+                return {**cached[1], "stale": True}
+
+        range_map = {1: "1d", 5: "5d", 7: "5d", 30: "1mo", 90: "3mo", 180: "6mo", 365: "1y"}
+        # pick nearest bucket >= days
+        bucket = 365
+        for d in sorted(range_map):
+            if days <= d:
+                bucket = d
+                break
+        interval = "5m" if bucket <= 1 else "1d" if bucket <= 90 else "1wk"
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        ok, payload, err = await self._get_stock_json(
+            url, params={"range": range_map[bucket], "interval": interval, "includePrePost": "false"}
+        )
+        if ok and isinstance(payload, dict):
+            result_obj = (((payload.get("chart") or {}).get("result")) or [None])[0]
+            if isinstance(result_obj, dict):
+                timestamps = result_obj.get("timestamp") or []
+                quote = (((result_obj.get("indicators") or {}).get("quote")) or [{}])[0] or {}
+                closes = quote.get("close") or []
+                points = []
+                for ts, price in zip(timestamps, closes):
+                    if isinstance(price, (int, float)) and isinstance(ts, (int, float)):
+                        points.append({"t": int(ts) * 1000, "price": float(price)})
+                result = {
+                    "reachable": True,
+                    "error": None,
+                    "symbol": symbol,
+                    "days": days,
+                    "currency": ((result_obj.get("meta") or {}).get("currency") or "USD"),
+                    "points": points[-500:],
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "stale": False,
+                }
+            else:
+                ok = False
+        if not ok or not isinstance(payload, dict) or not (((payload.get("chart") or {}).get("result")) or []):
+            async with self._lock:
+                cached = self._stock_charts.get(key)
+            if cached:
+                result = {**cached[1], "reachable": True, "stale": True, "error": err}
+            else:
+                result = {
+                    "reachable": False,
+                    "error": err or "Stock chart unavailable.",
+                    "symbol": symbol,
+                    "days": days,
+                    "currency": "USD",
+                    "points": [],
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "stale": False,
+                }
+
+        async with self._lock:
+            self._stock_charts[key] = (time.monotonic(), result)
+        return result
+
 
 cache = IntelCache()
 
@@ -426,6 +620,7 @@ async def sources() -> dict[str, Any]:
 
 
 COIN_RE = r"^[a-z0-9-]{2,64}$"
+SYMBOL_RE = r"^[A-Za-z0-9.^=-]{1,20}$"
 
 
 @router.get("/markets/crypto")
@@ -441,3 +636,29 @@ async def crypto_chart(
     if not re.match(COIN_RE, coin):
         raise HTTPException(status_code=400, detail="Invalid coin id")
     return await cache.chart(coin, days)
+
+
+@router.get("/markets/stocks")
+async def stock_market(
+    symbols: str = Query(
+        default="AAPL,MSFT,NVDA,GOOGL,AMZN,META,TSLA,AVGO,JPM,V",
+        max_length=200,
+        description="Comma-separated company ticker symbols",
+    ),
+) -> dict[str, Any]:
+    requested = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    requested = [s for s in requested if re.match(SYMBOL_RE, s)][:15]
+    if not requested:
+        raise HTTPException(status_code=400, detail="No valid symbols provided")
+    return await cache.stock_market(requested)
+
+
+@router.get("/markets/stocks/{symbol}/chart")
+async def stock_chart(
+    symbol: str,
+    days: int = Query(30, ge=1, le=365),
+) -> dict[str, Any]:
+    symbol = symbol.strip().upper()
+    if not re.match(SYMBOL_RE, symbol):
+        raise HTTPException(status_code=400, detail="Invalid symbol")
+    return await cache.stock_chart(symbol, days)

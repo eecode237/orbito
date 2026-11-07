@@ -69,7 +69,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: "/planet", label: "Planet", icon: Globe2 },
       { href: "/news", label: "News Intelligence", icon: Newspaper },
-      { href: "/crypto", label: "Crypto", icon: Bitcoin },
+      { href: "/crypto", label: "Markets", icon: Bitcoin },
       { href: "/jobs", label: "Jobs Intelligence", icon: Briefcase },
       { href: "/scraping", label: "Web Intelligence", icon: Radar, badge: "Beta" },
     ],

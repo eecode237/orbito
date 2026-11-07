@@ -159,6 +159,36 @@ async def list_messages(conversation_id: str, limit: int = 100) -> list[Message]
         return []
 
 
+async def delete_conversation(conversation_id: str, user_id: str = DEMO_USER_ID) -> bool:
+    try:
+        async with SessionLocal() as session:
+            conversation = await session.get(Conversation, conversation_id)
+            if not conversation or conversation.user_id != user_id:
+                return False
+            await session.delete(conversation)
+            await session.commit()
+            return True
+    except Exception as exc:
+        logger.warning("conversation delete failed: %s", exc)
+        return False
+
+
+async def clear_conversations(user_id: str = DEMO_USER_ID) -> int:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(Conversation).where(Conversation.user_id == user_id)
+            )
+            rows = list(result.scalars())
+            for row in rows:
+                await session.delete(row)
+            await session.commit()
+            return len(rows)
+    except Exception as exc:
+        logger.warning("conversation clear failed: %s", exc)
+        return 0
+
+
 async def create_task(
     *,
     title: str,

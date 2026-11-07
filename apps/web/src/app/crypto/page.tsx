@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
 
-import { CryptoMarketView } from "@/components/crypto/crypto-market";
+import { MarketsView } from "@/components/crypto/crypto-market";
 
 export const metadata: Metadata = {
-  title: "Crypto Intelligence",
+  title: "Markets",
   description:
-    "Observed crypto market snapshots and price history from the CoinGecko public API, proxied by ORBITO with honest failure states.",
+    "Real crypto and company stock market snapshots and price history, proxied by ORBITO with cached/stale fallback on rate limits and no synthetic prices.",
 };
 
 export default function CryptoPage() {
   return (
     <div className="pt-2">
-      <CryptoMarketView />
+      <MarketsView />
     </div>
   );
 }

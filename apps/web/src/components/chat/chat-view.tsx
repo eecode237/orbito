@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Sparkles,
   Square,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -28,6 +29,8 @@ import { Mascot } from "@/components/brand/mascot";
 import { ExecutionTrace } from "@/components/chat/execution-trace";
 import { fallbackAgents } from "@/lib/agents";
 import {
+  clearConversations,
+  deleteConversation,
   getAgents,
   getConversationMessages,
   getConversations,
@@ -99,6 +102,7 @@ export function ChatView({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [loadingConversation, setLoadingConversation] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -164,6 +168,49 @@ export function ChatView({
       setLoadingConversation(false);
     }
   }, [streaming]);
+
+  const handleDeleteConversation = useCallback(async (id: string) => {
+    if (!id || deletingId) return;
+    if (typeof window !== "undefined" && !window.confirm("Delete this conversation? This cannot be undone.")) return;
+    setDeletingId(id);
+    try {
+      await deleteConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (conversationId === id) {
+        abortRef.current?.abort();
+        setMessages([]);
+        setConversationId(null);
+        setSteps([]);
+        setRunMeta(null);
+        setTaskId(null);
+        setActiveAgent(null);
+        setError(null);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to delete conversation.");
+    } finally {
+      setDeletingId(null);
+    }
+  }, [conversationId, deletingId]);
+
+  const handleClearHistory = useCallback(async () => {
+    if (streaming || historyLoading) return;
+    if (typeof window !== "undefined" && !window.confirm("Clear all chat history? This cannot be undone.")) return;
+    try {
+      await clearConversations();
+      setConversations([]);
+      abortRef.current?.abort();
+      setMessages([]);
+      setConversationId(null);
+      setSteps([]);
+      setRunMeta(null);
+      setTaskId(null);
+      setActiveAgent(null);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to clear chat history.");
+    }
+  }, [historyLoading, streaming]);
 
   useEffect(() => {
     if (!initialConversationId || autoLoadedConversationRef.current) return;
@@ -351,17 +398,20 @@ export function ChatView({
                 ) : (
                   <div className="space-y-1">
                     {historyList.map((conv) => (
-                      <button
+                      <div
                         key={conv.id}
-                        type="button"
-                        onClick={() => void openConversation(conv.id)}
-                        disabled={streaming || loadingConversation}
                         className={cn(
-                          "w-full rounded-lg border px-2.5 py-2 text-left transition",
+                          "group flex w-full items-start gap-1 rounded-lg border px-1.5 py-1.5 transition",
                           conv.id === conversationId ? "border-violet/30 bg-violet/[0.1]" : "border-transparent bg-transparent hover:border-white/[0.07] hover:bg-white/[0.02]",
                         )}
                       >
-                        <div className="flex items-start gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void openConversation(conv.id)}
+                          disabled={streaming || loadingConversation || deletingId === conv.id}
+                          className="flex min-w-0 flex-1 items-start gap-2 rounded-md px-1 py-0.5 text-left disabled:opacity-60"
+                          title={conv.title || "Conversation"}
+                        >
                           <MessageSquare className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", conv.id === conversationId ? "text-violet-soft" : "text-white/25")} />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-[11px] font-medium text-white/78">{conv.title || "Conversation"}</p>
@@ -369,15 +419,34 @@ export function ChatView({
                               {conv.agent ? `${conv.agent} · ` : ""}{formatRelative(conv.updated_at)}
                             </p>
                           </div>
-                        </div>
-                      </button>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void handleDeleteConversation(conv.id); }}
+                          disabled={deletingId === conv.id}
+                          className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md text-white/20 opacity-0 transition hover:bg-rose/10 hover:text-rose group-hover:opacity-100 focus:opacity-100 disabled:opacity-40"
+                          aria-label={`Delete ${conv.title || "conversation"}`}
+                          title="Delete conversation"
+                        >
+                          {deletingId === conv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
               </div>
-              <div className="border-t border-white/[0.05] p-2">
-                <button type="button" onClick={() => void loadHistory()} className="w-full rounded-md px-2 py-1.5 text-[10px] text-white/35 hover:bg-white/[0.03] hover:text-white/60">
-                  Refresh history
+              <div className="flex items-center gap-1 border-t border-white/[0.05] p-2">
+                <button type="button" onClick={() => void loadHistory()} className="flex-1 rounded-md px-2 py-1.5 text-[10px] text-white/35 hover:bg-white/[0.03] hover:text-white/60">
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleClearHistory()}
+                  disabled={!historyList.length || streaming}
+                  className="rounded-md px-2 py-1.5 text-[10px] text-white/30 hover:bg-rose/10 hover:text-rose disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Clear all chat history"
+                >
+                  Clear all
                 </button>
               </div>
             </>

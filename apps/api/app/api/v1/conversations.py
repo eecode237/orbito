@@ -47,3 +47,17 @@ async def list_messages(conversation_id: str) -> dict:
             for message in messages
         ],
     }
+
+
+@router.delete("/{conversation_id}")
+async def delete_conversation(conversation_id: str) -> dict:
+    deleted = await repo.delete_conversation(conversation_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"deleted": True, "id": conversation_id}
+
+
+@router.delete("")
+async def clear_conversations() -> dict:
+    count = await repo.clear_conversations()
+    return {"deleted": True, "count": count}

@@ -36,12 +36,31 @@ export type ProviderStatus = {
   capabilities: string[];
 };
 
+export type TaskStatus =
+  | "queued"
+  | "running"
+  | "paused"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
 export type TaskStep = {
   index: number;
   title: string;
   status: "pending" | "running" | "done" | "failed" | "cancelled" | "skipped";
   detail?: string | null;
   tool?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  duration_seconds?: number | null;
+};
+
+export type TaskUsage = {
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
 };
 
 export type TaskSummary = {
@@ -49,15 +68,60 @@ export type TaskSummary = {
   title: string;
   prompt: string;
   agent: string | null;
-  status: string;
+  status: TaskStatus | string;
   progress: number;
   result?: string | null;
   error?: string | null;
   model?: string | null;
   provider?: string | null;
   cost_usd: number;
+  conversation_id?: string | null;
   created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  duration_seconds?: number | null;
+  meta?: Record<string, unknown>;
+  sources?: Source[];
+  approval_request?: string | null;
   steps: TaskStep[];
+  usage?: TaskUsage;
+};
+
+export type TaskEvent = {
+  id: string;
+  task_id: string;
+  kind: string;
+  level: "info" | "success" | "warning" | "error" | "tool" | "model" | "agent";
+  message: string;
+  detail?: string | null;
+  step_index?: number | null;
+  data: Record<string, unknown>;
+  created_at: string | null;
+};
+
+export type TaskMetrics = {
+  counts: {
+    all: number;
+    active: number;
+    running: number;
+    paused: number;
+    queued: number;
+    completed: number;
+    failed: number;
+    cancelled: number;
+    completed_today: number;
+    failed_today: number;
+  };
+  average_duration_seconds: number | null;
+  active_agents: { agent: string; running: number }[];
+  generated_at: string;
+};
+
+export type TaskList = {
+  tasks: TaskSummary[];
+  total: number;
+  limit: number;
+  offset: number;
 };
 
 export type UsageSummary = {

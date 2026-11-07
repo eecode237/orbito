@@ -12,13 +12,16 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from app.agents.base import Agent, AgentPlanStep
 from app.agents.registry import agents
+from app.core import task_controls as controls
 from app.core.memory.store import build_system_prompt, maybe_capture, recall
 from app.core.model_gateway import GenerationRequest, Message as GatewayMessage
 from app.core.model_gateway import gateway, registry
+from app.core.task_controls import TaskCancelled
 from app.db import repositories as repo
 from app.logging import get_logger
 
@@ -67,6 +70,35 @@ class Orchestrator:
                 )
             )
 
+        await repo.add_task_event(
+            task_id,
+            kind="task.created",
+            message=self._title(request.message),
+            detail="ORBITO accepted the task and started planning.",
+            data={"agent": agent.slug, "steps": len(plan)},
+        )
+        await repo.add_task_event(
+            task_id,
+            kind="agent.selected",
+            level="agent",
+            message=f"{agent.name} agent selected",
+            detail=agent.tagline,
+            data={"agent": agent.slug, "capabilities": agent.capabilities},
+        )
+        await repo.add_task_event(
+            task_id,
+            kind="model.selected",
+            level="model",
+            message=f"{spec.label} ({spec.model})",
+            detail=f"Provider: {spec.provider} · role: {capability}",
+            data={
+                "provider": spec.provider,
+                "model": spec.model,
+                "role": capability,
+                "local": spec.local,
+            },
+        )
+
         yield {
             "type": "task.created",
             "task_id": task_id,
@@ -85,9 +117,19 @@ class Orchestrator:
         }
 
         tool_context = ""
+        sources: list[dict[str, Any]] = []
         try:
             for index, step in enumerate(plan):
+                await controls.checkpoint(task_id)
                 await self._step(step_rows[index], index, step.title, "running")
+                await repo.add_task_event(
+                    task_id,
+                    kind="step.started",
+                    message=step.title,
+                    detail="Step started.",
+                    step_index=index,
+                    data={"tool": step.tool},
+                )
                 yield {
                     "type": "step.updated",
                     "index": index,
@@ -98,17 +140,49 @@ class Orchestrator:
 
                 detail: str | None = None
                 if step.tool:
+                    await repo.add_task_event(
+                        task_id,
+                        kind="tool.call",
+                        level="tool",
+                        message=f"Calling {step.tool}",
+                        step_index=index,
+                        data={"tool": step.tool},
+                    )
                     result = await agent.gather(request.message, {"task_id": task_id})
                     if result is not None:
                         if result.ok:
                             tool_context = result.summary
                             detail = result.summary[:240] or "Done"
+                            sources.extend(source.model_dump() for source in result.sources)
+                            await repo.add_task_event(
+                                task_id,
+                                kind="tool.result",
+                                level="tool",
+                                message=f"{step.tool} returned {len(result.sources)} source(s)",
+                                detail=detail,
+                                step_index=index,
+                                data={
+                                    "tool": step.tool,
+                                    "sources": [
+                                        source.model_dump() for source in result.sources
+                                    ],
+                                },
+                            )
                             yield {
                                 "type": "sources",
                                 "sources": result.sources,
                             }
                         else:
                             detail = result.error or "Tool unavailable"
+                            await repo.add_task_event(
+                                task_id,
+                                kind="tool.error",
+                                level="error",
+                                message=f"{step.tool} failed",
+                                detail=detail,
+                                step_index=index,
+                                data={"tool": step.tool},
+                            )
                             yield {
                                 "type": "step.updated",
                                 "index": index,
@@ -123,6 +197,19 @@ class Orchestrator:
                             continue
 
                 await self._step(step_rows[index], index, step.title, "done", detail)
+                await repo.add_task_event(
+                    task_id,
+                    kind="step.completed",
+                    level="success",
+                    message=f"{step.title} completed",
+                    detail=detail,
+                    step_index=index,
+                    data={"tool": step.tool},
+                )
+                await repo.update_task(
+                    task_id,
+                    progress=min(80, int(((index + 1) / max(1, len(plan))) * 80)),
+                )
                 yield {
                     "type": "step.updated",
                     "index": index,
@@ -132,6 +219,7 @@ class Orchestrator:
                 }
                 await asyncio.sleep(0.12)
 
+            await controls.checkpoint(task_id)
             memory = await recall(request.user_id)
             await maybe_capture(request.user_id, request.message, request.workspace_id)
 
@@ -161,6 +249,14 @@ class Orchestrator:
             )
 
             await repo.update_task(task_id, model=spec.model, provider=spec.provider)
+            await repo.add_task_event(
+                task_id,
+                kind="model.request",
+                level="model",
+                message=f"Generating with {spec.model}",
+                detail=f"{spec.provider} · capability {capability}",
+                data={"provider": spec.provider, "model": spec.model, "role": capability},
+            )
             if step_rows:
                 await self._step(
                     step_rows[-1], len(plan) - 1, plan[-1].title, "running"
@@ -174,6 +270,8 @@ class Orchestrator:
             model = spec.model
 
             async for event in gateway.stream(generation):
+                if controls.is_cancelled(task_id):
+                    raise TaskCancelled("Task cancelled by user")
                 if event.type == "delta":
                     chunks.append(event.text)
                     yield {"type": "delta", "text": event.text}
@@ -207,6 +305,12 @@ class Orchestrator:
                 model=model,
                 provider=provider,
                 cost_usd=cost,
+                finished_at=datetime.now(UTC),
+                meta={
+                    "model_role": capability,
+                    "agent": agent.slug,
+                    "sources": sources,
+                },
             )
             if step_rows:
                 await self._step(
@@ -223,6 +327,20 @@ class Orchestrator:
                     task_id=task_id,
                     user_id=request.user_id,
                 )
+            await repo.add_task_event(
+                task_id,
+                kind="task.completed",
+                level="success",
+                message="Task completed",
+                detail=f"{len(chunks)} chunk(s) streamed from {model}.",
+                data={
+                    "provider": provider,
+                    "model": model,
+                    "cost_usd": cost,
+                    "usage": usage.model_dump() if usage else None,
+                    "sources": len(sources),
+                },
+            )
 
             yield {
                 "type": "done",
@@ -234,10 +352,42 @@ class Orchestrator:
                 "cost_usd": cost,
                 "finish_reason": finish_reason,
             }
+        except TaskCancelled:
+            logger.info("task %s cancelled", task_id)
+            current = await repo.get_task(task_id)
+            if current:
+                for step in current.steps:
+                    if step.status in {"pending", "running"}:
+                        await repo.update_step(step.id, status="skipped")
+            await repo.update_task(
+                task_id,
+                status="cancelled",
+                error="Cancelled by user",
+                finished_at=datetime.now(UTC),
+            )
+            await repo.add_task_event(
+                task_id,
+                kind="task.cancelled",
+                level="warning",
+                message="Task cancelled by user",
+                detail="No further steps will run.",
+            )
+            yield {"type": "error", "task_id": task_id, "error": "Task cancelled by user"}
         except Exception as exc:
             logger.exception("orchestration failed")
-            await repo.update_task(task_id, status="failed", error=str(exc))
+            await repo.update_task(
+                task_id, status="failed", error=str(exc), finished_at=datetime.now(UTC)
+            )
+            await repo.add_task_event(
+                task_id,
+                kind="task.failed",
+                level="error",
+                message="Task failed",
+                detail=str(exc),
+            )
             yield {"type": "error", "task_id": task_id, "error": str(exc)}
+        finally:
+            controls.forget(task_id)
 
     # -- helpers ------------------------------------------------------------
     def _capability(self, requested: str | None) -> str:
@@ -265,7 +415,13 @@ class Orchestrator:
         status: str,
         detail: str | None = None,
     ) -> None:
-        await repo.update_step(row_id, status=status, detail=detail, title=title)
+        now = datetime.now(UTC)
+        fields: dict[str, Any] = {"status": status, "detail": detail, "title": title}
+        if status == "running":
+            fields["started_at"] = now
+        if status in {"done", "failed", "skipped"}:
+            fields["finished_at"] = now
+        await repo.update_step(row_id, **fields)
 
 
 orchestrator = Orchestrator()

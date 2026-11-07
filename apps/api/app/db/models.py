@@ -142,6 +142,28 @@ class TaskStep(Base):
     task: Mapped[Task] = relationship(back_populates="steps")
 
 
+class TaskEvent(Base):
+    """Observable execution events for the Agent Monitor.
+
+    These are concise, user-facing summaries (agent selected, tool called,
+    step finished). They are deliberately *not* raw model chain-of-thought.
+    """
+
+    __tablename__ = "task_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(60), default="info")
+    level: Mapped[str] = mapped_column(String(20), default="info")
+    message: Mapped[str] = mapped_column(Text, default="")
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    step_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ModelProvider(Base, TimestampMixin):
     __tablename__ = "model_providers"
 

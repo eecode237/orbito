@@ -25,6 +25,7 @@ from app.db.models import (
     ScrapingJob,
     ScrapingResult,
     Task,
+    TaskEvent,
     TaskStep,
     User,
 )
@@ -263,20 +264,213 @@ async def get_task(task_id: str) -> Task | None:
         return None
 
 
-async def list_tasks(user_id: str = DEMO_USER_ID, limit: int = 20) -> list[Task]:
+async def list_tasks(
+    user_id: str = DEMO_USER_ID,
+    limit: int = 20,
+    *,
+    status: str | None = None,
+    query: str | None = None,
+    offset: int = 0,
+) -> list[Task]:
     try:
         async with SessionLocal() as session:
+            statement = select(Task).where(Task.user_id == user_id)
+            if status and status != "all":
+                statement = statement.where(Task.status == status)
+            if query:
+                needle = f"%{query.strip().lower()}%"
+                statement = statement.where(
+                    func.lower(Task.title).like(needle)
+                    | func.lower(Task.prompt).like(needle)
+                    | func.lower(func.coalesce(Task.agent, "")).like(needle)
+                )
             result = await session.execute(
-                select(Task)
-                .where(Task.user_id == user_id)
-                .options(selectinload(Task.steps))
+                statement.options(selectinload(Task.steps))
                 .order_by(Task.created_at.desc())
+                .offset(max(0, offset))
                 .limit(limit)
             )
             return list(result.scalars())
     except Exception as exc:
         logger.warning("task list failed: %s", exc)
         return []
+
+
+async def count_tasks(
+    user_id: str = DEMO_USER_ID,
+    *,
+    status: str | None = None,
+    query: str | None = None,
+) -> int:
+    try:
+        async with SessionLocal() as session:
+            statement = select(func.count(Task.id)).where(Task.user_id == user_id)
+            if status and status != "all":
+                statement = statement.where(Task.status == status)
+            if query:
+                needle = f"%{query.strip().lower()}%"
+                statement = statement.where(
+                    func.lower(Task.title).like(needle)
+                    | func.lower(Task.prompt).like(needle)
+                    | func.lower(func.coalesce(Task.agent, "")).like(needle)
+                )
+            result = await session.execute(statement)
+            return int(result.scalar_one() or 0)
+    except Exception:
+        return 0
+
+
+# --- task events / monitor --------------------------------------------------
+
+
+async def add_task_event(
+    task_id: str | None,
+    *,
+    kind: str,
+    message: str,
+    level: str = "info",
+    detail: str | None = None,
+    step_index: int | None = None,
+    data: dict[str, Any] | None = None,
+) -> str | None:
+    if not task_id:
+        return None
+    try:
+        async with SessionLocal() as session:
+            event = TaskEvent(
+                task_id=task_id,
+                kind=kind,
+                level=level,
+                message=message,
+                detail=detail,
+                step_index=step_index,
+                data=data or {},
+            )
+            session.add(event)
+            await session.commit()
+            await session.refresh(event)
+            return event.id
+    except Exception as exc:
+        logger.warning("task event write failed: %s", exc)
+        return None
+
+
+async def list_task_events(task_id: str, limit: int = 500) -> list[TaskEvent]:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(TaskEvent)
+                .where(TaskEvent.task_id == task_id)
+                .order_by(TaskEvent.created_at.asc())
+                .limit(limit)
+            )
+            return list(result.scalars())
+    except Exception as exc:
+        logger.warning("task event list failed: %s", exc)
+        return []
+
+
+async def task_usage(task_id: str) -> dict[str, Any]:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(
+                    func.coalesce(func.sum(ModelUsage.prompt_tokens), 0),
+                    func.coalesce(func.sum(ModelUsage.completion_tokens), 0),
+                    func.coalesce(func.sum(ModelUsage.cost_usd), 0.0),
+                    func.count(ModelUsage.id),
+                ).where(ModelUsage.task_id == task_id)
+            )
+            prompt, completion, cost, requests = result.one()
+            return {
+                "requests": int(requests or 0),
+                "prompt_tokens": int(prompt or 0),
+                "completion_tokens": int(completion or 0),
+                "total_tokens": int(prompt or 0) + int(completion or 0),
+                "cost_usd": round(float(cost or 0.0), 6),
+            }
+    except Exception:
+        return {
+            "requests": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "cost_usd": 0.0,
+        }
+
+
+def _duration(task: Task) -> float | None:
+    if not task.started_at or not task.finished_at:
+        return None
+    try:
+        return max(0.0, (task.finished_at - task.started_at).total_seconds())
+    except TypeError:
+        return None
+
+
+async def task_stats(user_id: str = DEMO_USER_ID) -> dict[str, Any]:
+    """Aggregate counters for the Agent Monitor header.
+
+    Computed from real task rows, not synthetic dashboard numbers. Only the
+    most recent 500 tasks are scanned so the endpoint stays cheap on SQLite.
+    """
+    tasks = await list_tasks(user_id=user_id, limit=500)
+    counts: dict[str, int] = {}
+    for task in tasks:
+        counts[task.status] = counts.get(task.status, 0) + 1
+
+    durations = [
+        duration
+        for task in tasks
+        if task.status == "completed"
+        for duration in [_duration(task)]
+        if duration is not None
+    ]
+    active_agents: dict[str, int] = {}
+    for task in tasks:
+        if task.status in {"running", "paused"}:
+            key = task.agent or "core"
+            active_agents[key] = active_agents.get(key, 0) + 1
+
+    today = datetime.now(UTC).date()
+    completed_today = 0
+    failed_today = 0
+    for task in tasks:
+        when = task.finished_at or task.created_at
+        if when is None:
+            continue
+        try:
+            if when.date() != today:
+                continue
+        except AttributeError:
+            continue
+        if task.status == "completed":
+            completed_today += 1
+        elif task.status == "failed":
+            failed_today += 1
+
+    return {
+        "counts": {
+            "all": len(tasks),
+            "active": counts.get("running", 0) + counts.get("paused", 0),
+            "running": counts.get("running", 0),
+            "paused": counts.get("paused", 0),
+            "queued": counts.get("queued", 0),
+            "completed": counts.get("completed", 0),
+            "failed": counts.get("failed", 0),
+            "cancelled": counts.get("cancelled", 0),
+            "completed_today": completed_today,
+            "failed_today": failed_today,
+        },
+        "average_duration_seconds": (
+            round(sum(durations) / len(durations), 1) if durations else None
+        ),
+        "active_agents": [
+            {"agent": slug, "running": running}
+            for slug, running in sorted(active_agents.items())
+        ],
+        "generated_at": datetime.now(UTC).isoformat(),
+    }
 
 
 async def record_usage(

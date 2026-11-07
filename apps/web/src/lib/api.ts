@@ -10,7 +10,11 @@ import type {
   ScrapingResult,
   SystemAlerts,
   SystemStats,
+  TaskEvent,
+  TaskList,
+  TaskMetrics,
   TaskSummary,
+  TaskUsage,
   UsageSummary,
   WorkspaceFile,
   WorkspaceOverview,
@@ -149,8 +153,63 @@ export async function getModels(): Promise<{
   return apiGet("/api/v1/models");
 }
 
-export async function getTasks(limit = 20): Promise<{ tasks: TaskSummary[] }> {
-  return apiGet(`/api/v1/tasks?limit=${limit}`);
+export async function getTasks(
+  optionsOrLimit:
+    | number
+    | {
+        limit?: number;
+        offset?: number;
+        status?: string;
+        q?: string;
+      } = {},
+): Promise<TaskList> {
+  const options =
+    typeof optionsOrLimit === "number" ? { limit: optionsOrLimit } : optionsOrLimit;
+  const params = new URLSearchParams({
+    limit: String(options.limit ?? 20),
+    offset: String(options.offset ?? 0),
+  });
+  if (options.status && options.status !== "all") params.set("status", options.status);
+  if (options.q?.trim()) params.set("q", options.q.trim());
+  return apiGet(`/api/v1/tasks?${params.toString()}`);
+}
+
+export async function getTask(id: string): Promise<TaskSummary> {
+  return apiGet(`/api/v1/tasks/${id}`);
+}
+
+export async function getTaskMetrics(): Promise<TaskMetrics> {
+  return apiGet("/api/v1/tasks/metrics");
+}
+
+export async function getTaskEvents(id: string): Promise<{ task_id: string; events: TaskEvent[] }> {
+  return apiGet(`/api/v1/tasks/${id}/events`);
+}
+
+export function taskEventsUrl(id: string): string {
+  return `${API_URL}/api/v1/tasks/${id}/events/stream`;
+}
+
+export async function getTaskUsage(id: string): Promise<TaskUsage> {
+  const task = await getTask(id);
+  return (
+    task.usage ?? {
+      requests: 0,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+      cost_usd: 0,
+    }
+  );
+}
+
+export type TaskAction = "pause" | "resume" | "cancel" | "retry" | "approve" | "reject";
+
+export async function controlTask(
+  id: string,
+  action: TaskAction,
+): Promise<Record<string, unknown>> {
+  return apiSend(`/api/v1/tasks/${id}/${action}`, "POST");
 }
 
 export async function getUsage(): Promise<UsageSummary> {

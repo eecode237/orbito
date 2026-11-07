@@ -70,7 +70,9 @@ export function WorkspaceExplorer() {
   useEffect(() => {
     if (!root) return;
     let alive = true;
-    setLoadingTree(true);
+    const kickoff = setTimeout(() => {
+      if (alive) setLoadingTree(true);
+    }, 0);
     getWorkspaceTree(root, path)
       .then((data) => {
         if (!alive) return;
@@ -85,6 +87,7 @@ export function WorkspaceExplorer() {
       });
     return () => {
       alive = false;
+      clearTimeout(kickoff);
     };
   }, [root, path]);
 

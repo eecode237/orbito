@@ -33,6 +33,7 @@ export const navGroups: NavGroup[] = [
       { href: "/", label: "Overview", icon: LayoutDashboard },
       { href: "/chat", label: "Chat", icon: Sparkles },
       { href: "/agents", label: "Agents", icon: Briefcase },
+      { href: "/agents/monitor", label: "Agent Monitor", icon: Activity, badge: "Live" },
       { href: "/system", label: "System", icon: Gauge },
     ],
   },

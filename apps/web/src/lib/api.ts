@@ -241,6 +241,19 @@ export async function getMemories(): Promise<{ memories: MemoryItem[] }> {
   return apiGet("/api/v1/memory");
 }
 
+export async function createMemory(payload: {
+  content: string;
+  scope?: "long_term" | "workspace";
+  key?: string | null;
+  workspace_id?: string | null;
+}): Promise<{ id: string }> {
+  return apiSend("/api/v1/memory", "POST", payload);
+}
+
+export async function deleteMemoryApi(memoryId: string): Promise<void> {
+  await apiSend(`/api/v1/memory/${encodeURIComponent(memoryId)}`, "DELETE");
+}
+
 export async function getScrapingJobs(): Promise<{ jobs: ScrapingJob[] }> {
   return apiGet("/api/v1/scraping/jobs");
 }

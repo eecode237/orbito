@@ -125,11 +125,13 @@ skips unconfigured providers — nothing to change in code.
 
 ## 7. Verification checklist
 
-- [ ] `ollama list` shows the four models.
-- [ ] `curl http://localhost:11434/api/tags` responds (Ollama service running).
-- [ ] Model Hub overview reports Ollama **connected** with hardware summary.
-- [ ] A chat message streams from `qwen3.5:4b` (not `mock`) — check the model
-      badge and `model_usage` row after `done`.
+- [x] `ollama list` shows the four models. (2026-11-07: qwen3.5:4b, qwen3.5:9b,
+      qwen2.5-coder:7b, nomic-embed-text)
+- [x] `curl http://localhost:11434/api/tags` responds (Ollama service running).
+- [x] Model Hub overview reports Ollama **connected** with hardware summary
+      (`/api/v1/health` shows `"ollama": true, "live_provider": true`).
+- [x] A chat message streams from `qwen3.5:4b` (not `mock`) — verified for the
+      core agent (14.2s) and the career specialist with tool call (40.2s).
 - [ ] `ollama ps` during generation shows the loaded model and memory size.
 - [ ] System page shows real CPU/RAM/disk; battery and CPU temperature show
       "Not available" (not fake numbers) on this desktop.

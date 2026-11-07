@@ -393,6 +393,8 @@ export type WorkspaceSearch = {
   limit_reached: boolean;
 };
 
+export type NewsLocation = { lat: number; lon: number; label?: string };
+
 export type NewsArticle = {
   id: string;
   title: string;
@@ -401,6 +403,7 @@ export type NewsArticle = {
   source: string;
   category: string;
   published_at: string | null;
+  location?: NewsLocation | null;
 };
 
 export type NewsSourceStatus = {

@@ -48,6 +48,18 @@ FEEDS: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
+# Approximate source/coverage regions for globe visualization (honest mapping).
+# Not the article's precise dateline; used only to place news markers.
+SOURCE_LOCATIONS: dict[str, dict[str, Any]] = {
+    "TechCrunch AI": {"lat": 37.7749, "lon": -122.4194, "label": "San Francisco, US"},
+    "VentureBeat AI": {"lat": 37.7749, "lon": -122.4194, "label": "San Francisco, US"},
+    "Ars Technica": {"lat": 42.3601, "lon": -71.0589, "label": "Boston, US"},
+    "The Verge": {"lat": 40.7128, "lon": -74.0060, "label": "New York, US"},
+    "CoinDesk": {"lat": 40.7128, "lon": -74.0060, "label": "New York, US"},
+    "Cointelegraph": {"lat": 52.5200, "lon": 13.4050, "label": "Berlin, EU"},
+    "BBC Business": {"lat": 51.5074, "lon": -0.1278, "label": "London, UK"},
+}
+
 CATEGORIES = ("all", "ai", "tech", "crypto", "finance")
 CACHE_SECONDS = 120
 MARKET_CACHE_SECONDS = 90
@@ -144,6 +156,7 @@ def parse_feed(
         published = _parse_date(
             _child_text(node, {"pubdate", "published", "updated", "date"})
         )
+        location = SOURCE_LOCATIONS.get(source)
         articles.append(
             {
                 "id": f"{source}-{abs(hash((title, link)))}",
@@ -153,6 +166,7 @@ def parse_feed(
                 "source": source,
                 "category": category,
                 "published_at": published,
+                "location": location,
             }
         )
     return articles

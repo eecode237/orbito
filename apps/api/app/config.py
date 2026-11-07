@@ -84,12 +84,17 @@ class Settings(BaseSettings):
     workspace_max_file_bytes: int = 200_000
 
     # --- system monitor / alerts -------------------------------------------
-    alert_memory_percent: int = 90
-    alert_memory_critical_percent: int = 96
+    # One central collector samples the host; every UI widget reads its cache.
+    system_sample_seconds: float = 3.0
+    system_history_hours: int = 24
+    system_history_points: int = 240
+    alert_memory_percent: int = 85
+    alert_memory_critical_percent: int = 95
     alert_swap_percent: int = 80
     alert_disk_percent: int = 85
     alert_disk_critical_percent: int = 95
-    alert_cpu_percent: int = 92
+    alert_cpu_percent: int = 85
+    alert_cpu_critical_percent: int = 95
     alert_temperature_c: int = 80
     alert_temperature_critical_c: int = 92
     alert_battery_percent: int = 20

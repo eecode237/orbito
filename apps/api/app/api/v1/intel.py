@@ -24,6 +24,8 @@ from xml.etree import ElementTree
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 
+from app.core.intel.geo import describe_point, infer_location
+
 router = APIRouter(prefix="/intel", tags=["intelligence"])
 
 USER_AGENT = "ORBITO/0.1 (local intelligence reader; contact: local user)"
@@ -156,7 +158,9 @@ def parse_feed(
         published = _parse_date(
             _child_text(node, {"pubdate", "published", "updated", "date"})
         )
-        location = SOURCE_LOCATIONS.get(source)
+        location = infer_location(title, summary)
+        if location is None and SOURCE_LOCATIONS.get(source):
+            location = {**SOURCE_LOCATIONS[source], "precision": "source"}
         articles.append(
             {
                 "id": f"{source}-{abs(hash((title, link)))}",
@@ -676,3 +680,25 @@ async def stock_chart(
     if not re.match(SYMBOL_RE, symbol):
         raise HTTPException(status_code=400, detail="Invalid symbol")
     return await cache.stock_chart(symbol, days)
+
+
+GEO_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+GEO_CACHE_SECONDS = 86_400
+GEO_FAILURE_SECONDS = 60
+
+
+@router.get("/geo/describe")
+async def describe_location(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+) -> dict[str, Any]:
+    """Real description of the nearest Wikipedia place to a coordinate (cached)."""
+    key = f"{round(lat, 2)},{round(lon, 2)}"
+    now = time.monotonic()
+    cached = GEO_CACHE.get(key)
+    if cached and cached[0] > now:
+        return cached[1]
+    result = await describe_point(lat, lon)
+    ttl = GEO_CACHE_SECONDS if result.get("reachable") else GEO_FAILURE_SECONDS
+    GEO_CACHE[key] = (now + ttl, result)
+    return result

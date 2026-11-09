@@ -55,15 +55,30 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     )
 
 
+def _json_safe(value):
+    if isinstance(value, BaseException):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    first = exc.errors()[0] if exc.errors() else {}
-    message = first.get("msg", "Invalid request")
+    errors = _json_safe(exc.errors())
+    first = errors[0] if errors else {}
+    message = first.get("msg", "Invalid request") if isinstance(first, dict) else "Invalid request"
     return JSONResponse(
         status_code=422,
-        content={"error": {"code": "validation_error", "message": message, "detail": exc.errors()}},
+        content={"error": {"code": "validation_error", "message": message, "detail": errors}},
     )
 
 

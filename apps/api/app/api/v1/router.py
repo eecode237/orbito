@@ -16,6 +16,7 @@ from app.api.v1 import (
     scraping,
     system,
     tasks,
+    workflows,
     workspaces,
 )
 
@@ -28,6 +29,7 @@ api_router.include_router(system.router)
 api_router.include_router(workspaces.router)
 api_router.include_router(tasks.router)
 api_router.include_router(project_tasks.router)
+api_router.include_router(workflows.router)
 api_router.include_router(conversations.router)
 api_router.include_router(memory.router)
 api_router.include_router(scraping.router)

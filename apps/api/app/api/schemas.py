@@ -127,3 +127,70 @@ class ProjectWorkItemUpdate(BaseModel):
         if value is None:
             return None
         return list(dict.fromkeys(label.strip()[:40] for label in value if label.strip()))[:12]
+
+
+WorkflowStatus = Literal["draft", "active", "paused", "archived"]
+WorkflowTriggerType = Literal["manual", "schedule", "webhook", "event", "chat"]
+WorkflowRunStatus = Literal["queued", "running", "completed", "failed", "cancelled", "pending_runner"]
+
+
+class WorkflowCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=8000)
+    trigger: dict[str, Any] = Field(default_factory=lambda: {"type": "manual", "config": {}})
+    definition: dict[str, Any] = Field(default_factory=lambda: {"nodes": [], "edges": [], "version": 1})
+    enabled: bool = True
+    status: WorkflowStatus = "draft"
+
+    @field_validator("name")
+    @classmethod
+    def _workflow_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("Workflow name cannot be blank.")
+        return name
+
+    @field_validator("trigger")
+    @classmethod
+    def _workflow_trigger(cls, value: dict[str, Any]) -> dict[str, Any]:
+        trigger = dict(value or {})
+        trigger.setdefault("type", "manual")
+        trigger.setdefault("config", {})
+        if not isinstance(trigger.get("config"), dict):
+            trigger["config"] = {}
+        return trigger
+
+    @field_validator("definition")
+    @classmethod
+    def _workflow_definition(cls, value: dict[str, Any]) -> dict[str, Any]:
+        definition = dict(value or {})
+        nodes = definition.get("nodes")
+        edges = definition.get("edges")
+        definition["nodes"] = nodes if isinstance(nodes, list) else []
+        definition["edges"] = edges if isinstance(edges, list) else []
+        definition.setdefault("version", 1)
+        return definition
+
+
+class WorkflowUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=8000)
+    trigger: dict[str, Any] | None = None
+    definition: dict[str, Any] | None = None
+    enabled: bool | None = None
+    status: WorkflowStatus | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _workflow_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        name = value.strip()
+        if not name:
+            raise ValueError("Workflow name cannot be blank.")
+        return name
+
+
+class WorkflowRunCreate(BaseModel):
+    triggered_by: str = Field(default="manual", max_length=40)
+    input: dict[str, Any] = Field(default_factory=dict)

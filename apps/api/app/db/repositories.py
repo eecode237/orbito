@@ -29,6 +29,8 @@ from app.db.models import (
     TaskEvent,
     TaskStep,
     User,
+    Workflow,
+    WorkflowRun,
 )
 from app.db.session import SessionLocal
 from app.logging import get_logger
@@ -1066,3 +1068,217 @@ async def list_files(user_id: str = DEMO_USER_ID, limit: int = 100) -> list[File
     except Exception:
         return []
 
+
+# --- workflows / automations ------------------------------------------------
+
+WORKFLOW_STATUSES = {"draft", "active", "paused", "archived"}
+
+
+def _workflow_defaults(trigger: dict[str, Any] | None, definition: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
+    trig = trigger or {"type": "manual", "config": {}}
+    if "type" not in trig:
+        trig = {"type": "manual", **trig}
+    defn = definition or {"nodes": [], "edges": [], "version": 1}
+    defn.setdefault("nodes", [])
+    defn.setdefault("edges", [])
+    defn.setdefault("version", 1)
+    return trig, defn
+
+
+async def create_workflow(
+    *,
+    name: str,
+    description: str | None = None,
+    trigger: dict[str, Any] | None = None,
+    definition: dict[str, Any] | None = None,
+    enabled: bool = True,
+    status: str = "draft",
+    user_id: str = DEMO_USER_ID,
+) -> Workflow | None:
+    try:
+        trig, defn = _workflow_defaults(trigger, definition)
+        async with SessionLocal() as session:
+            workflow = Workflow(
+                user_id=user_id,
+                name=name.strip()[:160] or "Untitled workflow",
+                description=(description or "").strip() or None,
+                trigger=trig,
+                definition=defn,
+                enabled=enabled,
+                status=status if status in WORKFLOW_STATUSES else "draft",
+            )
+            session.add(workflow)
+            await session.commit()
+            await session.refresh(workflow)
+            return workflow
+    except Exception as exc:
+        logger.warning("workflow create failed: %s", exc)
+        return None
+
+
+async def get_workflow(workflow_id: str, user_id: str = DEMO_USER_ID) -> Workflow | None:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(Workflow).where(Workflow.id == workflow_id, Workflow.user_id == user_id)
+            )
+            return result.scalar_one_or_none()
+    except Exception as exc:
+        logger.warning("workflow lookup failed: %s", exc)
+        return None
+
+
+async def list_workflows(
+    *,
+    user_id: str = DEMO_USER_ID,
+    query: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[Workflow]:
+    try:
+        async with SessionLocal() as session:
+            statement = select(Workflow).where(Workflow.user_id == user_id)
+            if query and query.strip():
+                needle = f"%{query.strip().lower()}%"
+                statement = statement.where(
+                    func.lower(Workflow.name).like(needle)
+                    | func.lower(func.coalesce(Workflow.description, "")).like(needle)
+                )
+            result = await session.execute(
+                statement.order_by(Workflow.updated_at.desc())
+                .offset(max(0, offset))
+                .limit(max(1, min(limit, 200)))
+            )
+            return list(result.scalars())
+    except Exception as exc:
+        logger.warning("workflow list failed: %s", exc)
+        return []
+
+
+async def count_workflows(*, user_id: str = DEMO_USER_ID, query: str | None = None) -> int:
+    try:
+        async with SessionLocal() as session:
+            statement = select(func.count(Workflow.id)).where(Workflow.user_id == user_id)
+            if query and query.strip():
+                needle = f"%{query.strip().lower()}%"
+                statement = statement.where(
+                    func.lower(Workflow.name).like(needle)
+                    | func.lower(func.coalesce(Workflow.description, "")).like(needle)
+                )
+            result = await session.execute(statement)
+            return int(result.scalar_one() or 0)
+    except Exception:
+        return 0
+
+
+async def update_workflow(
+    workflow_id: str,
+    *,
+    fields: dict[str, Any],
+    user_id: str = DEMO_USER_ID,
+) -> Workflow | None:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(Workflow).where(Workflow.id == workflow_id, Workflow.user_id == user_id)
+            )
+            workflow = result.scalar_one_or_none()
+            if not workflow:
+                return None
+            allowed = {"name", "description", "trigger", "definition", "enabled", "status"}
+            for key, value in fields.items():
+                if key not in allowed:
+                    continue
+                if key == "name" and isinstance(value, str):
+                    value = value.strip()[:160] or workflow.name
+                if key == "description" and isinstance(value, str):
+                    value = value.strip() or None
+                if key == "status" and value not in WORKFLOW_STATUSES:
+                    continue
+                if key in {"trigger", "definition"} and value is not None:
+                    trig, defn = _workflow_defaults(
+                        value if key == "trigger" else workflow.trigger,
+                        value if key == "definition" else workflow.definition,
+                    )
+                    value = trig if key == "trigger" else defn
+                setattr(workflow, key, value)
+            await session.commit()
+            await session.refresh(workflow)
+            return workflow
+    except Exception as exc:
+        logger.warning("workflow update failed: %s", exc)
+        return None
+
+
+async def delete_workflow(workflow_id: str, user_id: str = DEMO_USER_ID) -> bool:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(Workflow).where(Workflow.id == workflow_id, Workflow.user_id == user_id)
+            )
+            workflow = result.scalar_one_or_none()
+            if not workflow:
+                return False
+            await session.delete(workflow)
+            await session.commit()
+            return True
+    except Exception as exc:
+        logger.warning("workflow delete failed: %s", exc)
+        return False
+
+
+async def create_workflow_run(
+    workflow_id: str,
+    *,
+    user_id: str = DEMO_USER_ID,
+    triggered_by: str = "manual",
+    input_data: dict[str, Any] | None = None,
+    status: str = "queued",
+    log: str | None = None,
+) -> WorkflowRun | None:
+    try:
+        async with SessionLocal() as session:
+            workflow = await session.get(Workflow, workflow_id)
+            if not workflow or workflow.user_id != user_id:
+                return None
+            run = WorkflowRun(
+                workflow_id=workflow_id,
+                user_id=user_id,
+                status=status,
+                triggered_by=triggered_by,
+                input=input_data or {},
+                output={},
+                log=log,
+            )
+            session.add(run)
+            workflow.run_count = int(workflow.run_count or 0) + 1
+            workflow.last_run_at = datetime.now(UTC)
+            await session.commit()
+            await session.refresh(run)
+            return run
+    except Exception as exc:
+        logger.warning("workflow run create failed: %s", exc)
+        return None
+
+
+async def list_workflow_runs(
+    workflow_id: str,
+    *,
+    user_id: str = DEMO_USER_ID,
+    limit: int = 30,
+) -> list[WorkflowRun]:
+    try:
+        async with SessionLocal() as session:
+            workflow = await session.get(Workflow, workflow_id)
+            if not workflow or workflow.user_id != user_id:
+                return []
+            result = await session.execute(
+                select(WorkflowRun)
+                .where(WorkflowRun.workflow_id == workflow_id, WorkflowRun.user_id == user_id)
+                .order_by(WorkflowRun.created_at.desc())
+                .limit(max(1, min(limit, 100)))
+            )
+            return list(result.scalars())
+    except Exception as exc:
+        logger.warning("workflow run list failed: %s", exc)
+        return []

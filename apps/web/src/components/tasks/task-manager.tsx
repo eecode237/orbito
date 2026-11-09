@@ -88,6 +88,7 @@ export function TaskManager() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectTask | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const loadBoard = useCallback(async (dateOverride?: string) => {
     const date = dateOverride || targetDate || localDate(new Date());
@@ -110,6 +111,7 @@ export function TaskManager() {
   }, [loadBoard]);
 
   const items = board?.items ?? EMPTY_ITEMS;
+  const selected = items.find((item) => item.id === selectedId) ?? null;
   const tomorrow = board?.tomorrow ?? (targetDate ? shiftDate(targetDate, 1) : "");
   const tomorrowItems = useMemo(
     () => items.filter((item) => item.scheduled_for === tomorrow && item.status !== "done"),
@@ -177,6 +179,7 @@ export function TaskManager() {
     setError(null);
     try {
       await deleteProjectTask(item.id);
+      setSelectedId((current) => (current === item.id ? null : current));
       await loadBoard();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not delete this task.");
@@ -186,7 +189,8 @@ export function TaskManager() {
   }
 
   return (
-    <div className="space-y-5 pb-8 pt-6 sm:pt-8">
+    <div className="flex items-start gap-5 pb-8 pt-6 sm:pt-8">
+    <div className="min-w-0 flex-1 space-y-5">
       <header className="relative overflow-hidden rounded-[24px] border border-border bg-[linear-gradient(145deg,rgba(26,19,48,0.92),rgba(8,10,23,0.96))] p-5 sm:p-6">
         <div className="halo -right-12 -top-20 h-60 w-60 bg-primary/20" />
         <div className="relative flex flex-wrap items-end justify-between gap-4">
@@ -315,6 +319,8 @@ export function TaskManager() {
                     <TaskCard
                       key={item.id}
                       item={item}
+                      selected={selected?.id === item.id}
+                      onSelect={(next) => setSelectedId(next.id)}
                       onEdit={openEdit}
                       onDelete={removeItem}
                       onMove={moveItem}
@@ -337,6 +343,172 @@ export function TaskManager() {
         Project tasks are stored in the database. ORBITO&apos;s agent runs remain in Activity/Agent Monitor; running a card in Chat links its execution ID here. Mark work done only when the actual work is complete.
       </p>
     </div>
+    {selected ? (
+      <TaskDetailsPanel
+        key={selected.id}
+        item={selected}
+        onClose={() => setSelectedId(null)}
+        onSave={async (id, input) => {
+          setError(null);
+          try {
+            await updateProjectTask(id, input);
+            await loadBoard();
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "Could not save this task.");
+          }
+        }}
+        onMove={moveItem}
+        onDelete={removeItem}
+        busy={busyId === selected.id}
+      />
+    ) : null}
+    </div>
+  );
+}
+
+function TaskDetailsPanel({
+  item,
+  onClose,
+  onSave,
+  onMove,
+  onDelete,
+  busy,
+}: {
+  item: ProjectTask;
+  onClose: () => void;
+  onSave: (id: string, input: Partial<ProjectTaskInput>) => Promise<void>;
+  onMove: (item: ProjectTask, status: ProjectTaskStatus) => void;
+  onDelete: (item: ProjectTask) => void;
+  busy: boolean;
+}) {
+  const [title, setTitle] = useState(item.title);
+  const [description, setDescription] = useState(item.description);
+  const [priority, setPriority] = useState<ProjectTaskPriority>(item.priority);
+  const [scheduledFor, setScheduledFor] = useState(item.scheduled_for ?? "");
+  const [dueDate, setDueDate] = useState(item.due_date ?? "");
+  const [estimate, setEstimate] = useState(item.estimate_minutes?.toString() ?? "");
+  const [labels, setLabels] = useState(item.labels.join(", "));
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!title.trim()) {
+      setFormError("Title is required.");
+      return;
+    }
+    setFormError(null);
+    setSaving(true);
+    await onSave(item.id, {
+      title: title.trim(),
+      description: description.trim(),
+      priority,
+      scheduled_for: scheduledFor || null,
+      due_date: dueDate || null,
+      estimate_minutes: estimate ? Number(estimate) : null,
+      labels: labels.split(",").map((label) => label.trim()).filter(Boolean),
+    });
+    setSaving(false);
+  }
+
+  return (
+    <aside
+      aria-label={`Details for ${item.key}`}
+      className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col overflow-y-auto border-l border-border bg-surface shadow-2xl xl:sticky xl:top-6 xl:z-auto xl:max-h-[calc(100vh-3rem)] xl:w-[380px] xl:shrink-0 xl:rounded-xl xl:border xl:shadow-none"
+    >
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border-subtle bg-surface px-4 py-3">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] text-foreground-muted">{item.key}</p>
+          <p className="truncate text-[11px] text-foreground-secondary">Updated {formatRelative(item.updated_at)}</p>
+        </div>
+        <button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-foreground-muted hover:bg-foreground/5 hover:text-foreground" aria-label="Close details">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-[10px] text-foreground-muted">
+            Status
+            <select
+              value={item.status}
+              onChange={(event) => onMove(item, event.target.value as ProjectTaskStatus)}
+              disabled={busy}
+              className="h-8 rounded-md border border-border bg-surface-inset px-2 text-[11px] text-foreground outline-none"
+            >
+              {STATUSES.map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}
+            </select>
+          </label>
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : null}
+        </div>
+
+        <form onSubmit={save} className="space-y-3">
+          <Field label="Title">
+            <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} className={inputClass} />
+          </Field>
+          <Field label="Description">
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} maxLength={12000} placeholder="Context, expected result, notes…" className={cn(inputClass, "h-auto min-h-24 py-2")} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Priority">
+              <select value={priority} onChange={(event) => setPriority(event.target.value as ProjectTaskPriority)} className={inputClass}>
+                {PRIORITIES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Estimate (min)">
+              <input type="number" min={0} max={100000} value={estimate} onChange={(event) => setEstimate(event.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Schedule for">
+              <input type="date" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Due date">
+              <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} className={inputClass} />
+            </Field>
+          </div>
+          <Field label="Labels (comma-separated)">
+            <input value={labels} onChange={(event) => setLabels(event.target.value)} placeholder="jarvis, coding" className={inputClass} />
+          </Field>
+          {formError ? <p className="text-[11px] text-error">{formError}</p> : null}
+          <div className="flex justify-end">
+            <Button variant="primary" size="sm" type="submit" disabled={saving}>
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save changes
+            </Button>
+          </div>
+        </form>
+
+        <section className="space-y-2 border-t border-border-subtle pt-4">
+          <h3 className="text-[10px] font-semibold uppercase tracking-wide text-foreground-muted">Execution</h3>
+          {item.execution_task_id ? (
+            <Link href={`/agents/monitor?task=${encodeURIComponent(item.execution_task_id)}`} className="inline-flex items-center gap-1 text-[11px] text-info hover:underline">
+              <Zap className="h-3 w-3" /> Latest run: {item.execution_status ?? "status unavailable"} <ExternalLink className="h-2.5 w-2.5" />
+            </Link>
+          ) : (
+            <p className="text-[11px] text-foreground-muted">No run linked yet.</p>
+          )}
+          {item.status !== "done" ? (
+            <Link
+              href={`/chat?q=${encodeURIComponent(`Work on ${item.key}: ${item.title}${item.description ? `\n\nContext:\n${item.description}` : ""}`)}&project_task=${encodeURIComponent(item.id)}`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary/10 px-3 text-[11px] font-medium text-primary-hover transition hover:bg-primary/20"
+            >
+              <Zap className="h-3.5 w-3.5" /> Run with ORBITO
+            </Link>
+          ) : (
+            <p className="inline-flex items-center gap-1 text-[11px] text-success"><CircleCheck className="h-3.5 w-3.5" /> Completed {formatRelative(item.completed_at)}</p>
+          )}
+        </section>
+
+        <section className="space-y-1 border-t border-border-subtle pt-4 text-[10px] text-foreground-muted">
+          <p>Created {formatRelative(item.created_at)}</p>
+          <p className="break-all font-mono text-[9px]">id {item.id}</p>
+        </section>
+
+        <div className="flex justify-end border-t border-border-subtle pt-4">
+          <Button variant="outline" size="sm" onClick={() => onDelete(item)} className="text-error hover:border-error/40">
+            <Trash2 className="h-3.5 w-3.5" /> Delete task
+          </Button>
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -428,6 +600,8 @@ function TaskForm({
 
 function TaskCard({
   item,
+  selected,
+  onSelect,
   onEdit,
   onDelete,
   onMove,
@@ -435,6 +609,8 @@ function TaskCard({
   busy,
 }: {
   item: ProjectTask;
+  selected: boolean;
+  onSelect: (item: ProjectTask) => void;
   onEdit: (item: ProjectTask) => void;
   onDelete: (item: ProjectTask) => void;
   onMove: (item: ProjectTask, status: ProjectTaskStatus) => void;
@@ -446,14 +622,17 @@ function TaskCard({
     <article
       draggable
       onDragStart={onDragStart}
-      className="group rounded-lg border border-border bg-surface p-3 shadow-sm transition hover:border-border-strong hover:shadow-md"
+      className={cn(
+        "group rounded-lg border bg-surface p-3 shadow-sm transition hover:border-border-strong hover:shadow-md",
+        selected ? "border-primary/50 ring-1 ring-primary/30" : "border-border",
+      )}
     >
       <div className="flex items-start gap-2">
         <span className="mt-0.5 cursor-grab font-mono text-[9px] text-foreground-muted active:cursor-grabbing" title="Drag to move">⠿</span>
-        <div className="min-w-0 flex-1">
+        <button type="button" onClick={() => onSelect(item)} className="min-w-0 flex-1 text-left" aria-pressed={selected} aria-label={`Open details for ${item.key}`}>
           <p className="font-mono text-[9px] text-foreground-muted">{item.key}</p>
-          <h4 className="mt-0.5 break-words text-[11.5px] font-semibold leading-snug text-foreground">{item.title}</h4>
-        </div>
+          <h4 className="mt-0.5 break-words text-[11.5px] font-semibold leading-snug text-foreground hover:text-primary-hover">{item.title}</h4>
+        </button>
         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : null}
       </div>
       {item.description ? <p className="mt-2 line-clamp-3 text-[10px] leading-relaxed text-foreground-secondary">{item.description}</p> : null}

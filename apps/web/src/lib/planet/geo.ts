@@ -64,3 +64,11 @@ export const EARTH_FACTS = [
   { label: "Orbital period", value: "365.256 days" },
   { label: "Mean distance from Sun", value: "149.6 million km" },
 ] as const;
+
+export function vec3ToLatLon(point: THREE.Vector3): { lat: number; lon: number } {
+  const length = point.length() || 1;
+  const lat = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(point.y / length, -1, 1)));
+  const phi = THREE.MathUtils.radToDeg(Math.atan2(point.z, -point.x));
+  const lon = ((((phi - 180) % 360) + 540) % 360) - 180;
+  return { lat, lon };
+}

@@ -7,6 +7,7 @@ import type {
   MemoryItem,
   ModelHubOverview,
   ModelInfo,
+  LocationInfo,
   ModelLibrarySearch,
   NewsFeed,
   ProviderStatus,
@@ -446,4 +447,11 @@ export async function getSystemHistory(range = "15m", points = 120): Promise<{
 
 export async function getSystemOverview(): Promise<Record<string, unknown>> {
   return apiGet("/api/v1/system/overview");
+}
+
+/**
+ * Nearest real place description for a point on the globe (Wikipedia, cached server-side).
+ */
+export async function getLocationInfo(lat: number, lon: number): Promise<LocationInfo> {
+  return apiGet(`/api/v1/intel/geo/describe?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`);
 }

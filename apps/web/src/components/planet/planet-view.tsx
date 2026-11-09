@@ -1,16 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { AlertTriangle, ExternalLink, Globe2, Loader2, MapPin, Newspaper, Radio, RefreshCw, Sun } from "lucide-react";
 
-import type { GlobeMarker, PlanetLayers, SunPosition, TextureStatus } from "@/components/planet/globe";
+import type { GlobeHover, GlobeMarker, PlanetLayers, SunPosition, TextureStatus } from "@/components/planet/globe";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { getNews } from "@/lib/api";
+import { getLocationInfo, getNews } from "@/lib/api";
 import { EARTH_FACTS } from "@/lib/planet/geo";
-import type { NewsArticle, NewsFeed } from "@/lib/types";
+import type { LocationInfo, NewsArticle, NewsFeed } from "@/lib/types";
 import { cn, formatRelative } from "@/lib/utils";
 
 const PlanetGlobe = dynamic(() => import("@/components/planet/globe").then((m) => m.PlanetGlobe), {
@@ -21,6 +21,8 @@ const PlanetGlobe = dynamic(() => import("@/components/planet/globe").then((m) =
     </div>
   ),
 });
+
+const REFRESH_MS = 60_000;
 
 const CATEGORY_COLORS: Record<string, string> = {
   ai: "#7c6cff",
@@ -49,8 +51,24 @@ const LAYER_LABELS: Record<keyof PlanetLayers, string> = {
   autoRotate: "Auto-rotate",
 };
 
+type Place = { id: string; articles: NewsArticle[]; lat: number; lon: number; label?: string; category: string };
+
+type TooltipState = {
+  hover: GlobeHover;
+  x: number;
+  y: number;
+  placeLeft: boolean;
+  placeUp: boolean;
+  bottomGap: number;
+};
+
 function formatCoord(value: number, positive: string, negative: string): string {
   return `${Math.abs(value).toFixed(1)}° ${value >= 0 ? positive : negative}`;
+}
+
+function formatDistance(meters: number | null): string | null {
+  if (meters == null) return null;
+  return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km away` : `${Math.round(meters)} m away`;
 }
 
 export function PlanetView() {
@@ -58,11 +76,14 @@ export function PlanetView() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [layers, setLayers] = useState<PlanetLayers>(DEFAULT_LAYERS);
   const [sun, setSun] = useState<SunPosition | null>(null);
   const [textureStatus, setTextureStatus] = useState<TextureStatus>("loading");
   const [now, setNow] = useState<Date | null>(null);
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const fetchNews = useCallback(
     () =>
@@ -70,6 +91,7 @@ export function PlanetView() {
         .then((data) => {
           setFeed(data);
           setError(null);
+          setLastUpdated(new Date());
         })
         .catch((err: unknown) => {
           setError(err instanceof Error ? err.message : "Failed to load news.");
@@ -83,7 +105,7 @@ export function PlanetView() {
 
   useEffect(() => {
     void fetchNews();
-    const t = window.setInterval(() => { void fetchNews(); }, 120000);
+    const t = window.setInterval(() => { void fetchNews(); }, REFRESH_MS);
     return () => window.clearInterval(t);
   }, [fetchNews]);
 
@@ -91,6 +113,7 @@ export function PlanetView() {
     setRefreshing(true);
     void fetchNews();
   }, [fetchNews]);
+
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(t);
@@ -100,48 +123,69 @@ export function PlanetView() {
   const handleStatus = useCallback((status: TextureStatus) => setTextureStatus(status), []);
 
   const articles = useMemo(() => feed?.articles ?? [], [feed]);
-  const mapped = useMemo(
-    () => articles.filter((a) => a.location && Number.isFinite(a.location.lat) && Number.isFinite(a.location.lon)),
-    [articles],
-  );
 
-  const markers: GlobeMarker[] = useMemo(() => {
-    const byKey = new Map<string, { marker: GlobeMarker; count: number }>();
-    for (const a of mapped) {
-      const loc = a.location!;
-      const key = `${loc.lat.toFixed(2)},${loc.lon.toFixed(2)},${a.category}`;
+  // One marker per real location. Every headline with a location is kept, so
+  // nothing from the feed is hidden behind an aggregate count.
+  const places: Place[] = useMemo(() => {
+    const byKey = new Map<string, Place>();
+    for (const a of articles) {
+      const loc = a.location;
+      if (!loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lon)) continue;
+      const key = `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}`;
       const existing = byKey.get(key);
-      if (!existing) {
-        byKey.set(key, {
-          count: 1,
-          marker: {
-            id: a.id,
-            lat: loc.lat,
-            lon: loc.lon,
-            label: loc.label,
-            title: a.title,
-            color: CATEGORY_COLORS[a.category] || "#7c6cff",
-            pulse: true,
-            size: 0.03,
-          },
-        });
+      if (existing) {
+        existing.articles.push(a);
       } else {
-        existing.count += 1;
-        existing.marker.size = Math.min(0.055, 0.03 + existing.count * 0.004);
+        byKey.set(key, { id: a.id, articles: [a], lat: loc.lat, lon: loc.lon, label: loc.label, category: a.category });
       }
     }
-    return Array.from(byKey.values()).map((v) => v.marker);
-  }, [mapped]);
+    return Array.from(byKey.values());
+  }, [articles]);
 
-  const selectedArticle: NewsArticle | null = selected
-    ? articles.find((a) => a.id === selected) ?? null
-    : null;
+  const markers: GlobeMarker[] = useMemo(
+    () =>
+      places.map((p) => ({
+        id: p.id,
+        lat: p.lat,
+        lon: p.lon,
+        label: p.label,
+        title: p.articles[0]?.title,
+        color: CATEGORY_COLORS[p.category] || "#7c6cff",
+        pulse: true,
+        size: Math.min(0.055, 0.03 + (p.articles.length - 1) * 0.004),
+      })),
+    [places],
+  );
+
+  const placeById = useMemo(() => new Map(places.map((p) => [p.id, p])), [places]);
+  const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
+
+  const selectedArticle: NewsArticle | null = selected ? articleById.get(selected) ?? null : null;
   const reachable = feed?.sources?.filter((s) => s.reachable).length ?? 0;
   const totalSources = feed?.sources?.length ?? 0;
 
   function toggle(key: keyof PlanetLayers) {
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
   }
+
+  const handleHover = useCallback((hover: GlobeHover | null) => {
+    if (!hover) {
+      setTooltip(null);
+      return;
+    }
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = hover.clientX - rect.left;
+    const y = hover.clientY - rect.top;
+    setTooltip({
+      hover,
+      x,
+      y,
+      placeLeft: x > rect.width / 2,
+      placeUp: y > rect.height / 2,
+      bottomGap: rect.height - y + 14,
+    });
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -150,8 +194,9 @@ export function PlanetView() {
           <Badge tone={feed?.reachable ? "success" : "error"} dot>
             {feed ? `${reachable}/${totalSources} feeds reachable` : "Checking feeds"}
           </Badge>
-          <Badge tone="neutral"><Radio className="mr-1 h-3 w-3" /> Auto-refresh 2 min</Badge>
-          <Badge tone="primary"><MapPin className="mr-1 h-3 w-3" /> {markers.length} mapped location{markers.length === 1 ? "" : "s"}</Badge>
+          <Badge tone="success"><Radio className="mr-1 h-3 w-3" /> Live · refresh every 60 s</Badge>
+          <Badge tone="neutral">{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : "Waiting for first update"}</Badge>
+          <Badge tone="primary"><MapPin className="mr-1 h-3 w-3" /> {places.length} location{places.length === 1 ? "" : "s"} · {articles.length} headlines</Badge>
         </div>
         <Button variant="secondary" size="sm" onClick={handleRefresh} disabled={refreshing || loading}>
           <RefreshCw className={cn("h-3.5 w-3.5", (refreshing || loading) && "animate-spin")} /> Refresh
@@ -166,16 +211,22 @@ export function PlanetView() {
         <Card className="overflow-hidden">
           <CardHeader
             title="Earth — 4K surface with live news"
-            description="Drag to rotate, scroll to zoom, click a marker to open its headline. Markers show approximate source regions."
+            description="Point at a marker for its headlines, or at any spot on Earth for the nearest described place. Click a marker to open it below."
             icon={<Globe2 className="h-3.5 w-3.5" />}
           />
           <CardContent className="p-0">
-            <div className="relative h-[460px] w-full bg-[radial-gradient(ellipse_at_center,rgba(124,108,255,0.08),rgba(3,5,14,0.95)_70%)] sm:h-[600px]">
+            <div
+              ref={containerRef}
+              className="relative h-[460px] w-full bg-[radial-gradient(ellipse_at_center,rgba(124,108,255,0.08),rgba(3,5,14,0.95)_70%)] sm:h-[600px]"
+              onPointerLeave={() => setTooltip(null)}
+            >
               <PlanetGlobe
                 markers={markers}
                 layers={layers}
                 selectedId={selected}
                 onSelect={setSelected}
+                onHover={handleHover}
+                paused={tooltip !== null}
                 onSun={handleSun}
                 onStatus={handleStatus}
                 className="h-full w-full"
@@ -222,6 +273,8 @@ export function PlanetView() {
                 ))}
               </div>
 
+              {tooltip ? <PointTooltip tooltip={tooltip} place={tooltip.hover.kind === "marker" ? placeById.get(tooltip.hover.id) ?? null : null} articleById={articleById} /> : null}
+
               {textureStatus === "error" ? (
                 <div className="absolute inset-x-3 top-14 flex items-start gap-2 rounded-lg border border-warning/30 bg-black/70 px-3 py-2 text-[11px] text-warning backdrop-blur">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -247,7 +300,7 @@ export function PlanetView() {
                 <div className="p-6 text-center text-[12px] text-foreground-muted">No headlines available. Feeds may be unreachable. Refresh to try again.</div>
               ) : (
                 <div className="max-h-[360px] divide-y divide-border-subtle overflow-y-auto">
-                  {articles.slice(0, 40).map((a) => (
+                  {articles.slice(0, 60).map((a) => (
                     <button
                       key={a.id}
                       type="button"
@@ -257,7 +310,7 @@ export function PlanetView() {
                       <div className="flex items-start justify-between gap-2">
                         <p className="line-clamp-2 text-[12px] font-medium leading-snug text-foreground">{a.title}</p>
                         {a.location ? (
-                          <span title={a.location.label || "Mapped source region"}>
+                          <span title={a.location.label || "Mapped location"}>
                             <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-primary/70" />
                           </span>
                         ) : null}
@@ -317,7 +370,10 @@ export function PlanetView() {
               <Badge tone="neutral">{selectedArticle.category}</Badge>
               <span>{selectedArticle.source}</span>
               {selectedArticle.location?.label ? (
-                <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" /> {selectedArticle.location.label} (approx. source region)</span>
+                <span className="inline-flex items-center gap-1">
+                  <MapPin className="h-3 w-3" /> {selectedArticle.location.label}
+                  {selectedArticle.location.precision === "headline" ? " (named in headline)" : " (approx. source region)"}
+                </span>
               ) : (
                 <span>Location not mapped</span>
               )}
@@ -328,8 +384,117 @@ export function PlanetView() {
       ) : null}
 
       <p className="text-[10.5px] text-foreground-muted">
-        Headlines come from real publisher RSS/Atom feeds via <span className="font-mono">/api/v1/intel/news</span>. Markers use approximate source regions, not article datelines. The sun position is computed from the current UTC time.
+        Headlines come from real publisher RSS/Atom feeds via <span className="font-mono">/api/v1/intel/news</span>, refreshed every minute. A location is marked &ldquo;named in headline&rdquo; only when the story names a known place; otherwise it falls back to the outlet&apos;s approximate region. Point descriptions come from Wikipedia.
       </p>
+    </div>
+  );
+}
+
+function PointTooltip({
+  tooltip,
+  place,
+  articleById,
+}: {
+  tooltip: TooltipState;
+  place: Place | null;
+  articleById: Map<string, NewsArticle>;
+}) {
+  const horizontal = tooltip.placeLeft
+    ? { left: Math.max(8, tooltip.x - 300) }
+    : { left: tooltip.x + 16 };
+  const vertical = tooltip.placeUp
+    ? { bottom: tooltip.bottomGap }
+    : { top: Math.max(8, tooltip.y + 14) };
+  const style = { ...horizontal, ...vertical };
+
+  return (
+    <div
+      className="pointer-events-none absolute z-10 w-[280px] rounded-xl border border-white/10 bg-black/80 p-3 text-[11px] text-white/85 shadow-xl backdrop-blur"
+      style={style}
+    >
+      {tooltip.hover.kind === "marker" ? (
+        <MarkerInfo place={place} articleById={articleById} />
+      ) : (
+        <SurfaceInfo lat={tooltip.hover.lat} lon={tooltip.hover.lon} />
+      )}
+    </div>
+  );
+}
+
+function MarkerInfo({ place, articleById }: { place: Place | null; articleById: Map<string, NewsArticle> }) {
+  const articles = place ? place.articles.slice(0, 3) : [];
+  if (!place || articles.length === 0) {
+    return <p className="text-white/50">No headline at this point.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] uppercase tracking-wide text-white/40">
+        {place.label ?? "News location"} · {place.articles.length} headline{place.articles.length === 1 ? "" : "s"}
+      </p>
+      {articles.map((a) => {
+        const full = articleById.get(a.id) ?? a;
+        return (
+          <div key={a.id} className="border-t border-white/10 pt-2 first:border-t-0 first:pt-0">
+            <p className="font-semibold leading-snug text-white">{full.title}</p>
+            {full.summary ? <p className="mt-0.5 line-clamp-3 text-white/65">{full.summary}</p> : null}
+            <p className="mt-0.5 text-[10px] text-white/40">{full.source} · {formatRelative(full.published_at)}</p>
+          </div>
+        );
+      })}
+      {place.articles.length > articles.length ? (
+        <p className="text-[10px] text-white/40">+{place.articles.length - articles.length} more · click to open</p>
+      ) : null}
+    </div>
+  );
+}
+
+function SurfaceInfo({ lat, lon }: { lat: number; lon: number }) {
+  const key = `${lat.toFixed(1)},${lon.toFixed(1)}`;
+  const [lookup, setLookup] = useState<{ key: string; info: LocationInfo | null; error: string | null } | null>(null);
+  const cache = useRef(new Map<string, LocationInfo>());
+
+  useEffect(() => {
+    const [qLat, qLon] = key.split(",").map(Number);
+    const timer = window.setTimeout(() => {
+      const cached = cache.current.get(key);
+      if (cached) {
+        setLookup({ key, info: cached, error: null });
+        return;
+      }
+      getLocationInfo(qLat, qLon)
+        .then((info) => {
+          if (info.reachable) cache.current.set(key, info);
+          setLookup({ key, info, error: info.reachable ? null : info.error });
+        })
+        .catch((err: unknown) => {
+          setLookup({ key, info: null, error: err instanceof Error ? err.message : "Lookup failed." });
+        });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [key]);
+
+  const current = lookup && lookup.key === key ? lookup : null;
+  return (
+    <div className="space-y-1.5">
+      <p className="font-mono text-[10px] text-white/45">
+        {formatCoord(lat, "N", "S")}, {formatCoord(lon, "E", "W")}
+      </p>
+      {!current ? (
+        <p className="flex items-center gap-1.5 text-white/50"><Loader2 className="h-3 w-3 animate-spin" /> Looking up this point…</p>
+      ) : current.error ? (
+        <p className="text-amber/90">Description unavailable: {current.error}</p>
+      ) : current.info?.title ? (
+        <>
+          <p className="font-semibold text-white">{current.info.title}</p>
+          {current.info.description ? <p className="text-white/70">{current.info.description}</p> : null}
+          {current.info.extract ? <p className="line-clamp-4 text-white/60">{current.info.extract}</p> : null}
+          <p className="text-[10px] text-white/40">
+            {[formatDistance(current.info.distance_m), current.info.source].filter(Boolean).join(" · ")}
+          </p>
+        </>
+      ) : (
+        <p className="text-white/50">No described place near this point (open ocean or remote area).</p>
+      )}
     </div>
   );
 }

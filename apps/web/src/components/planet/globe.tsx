@@ -5,7 +5,7 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber"
 import { OrbitControls, Stars } from "@react-three/drei";
 import * as THREE from "three";
 
-import { latLonToVec3, subsolarPoint } from "@/lib/planet/geo";
+import { latLonToVec3, subsolarPoint, vec3ToLatLon } from "@/lib/planet/geo";
 
 export type GlobeMarker = {
   id: string;
@@ -31,6 +31,10 @@ export type PlanetLayers = {
 export type TextureStatus = "loading" | "ready" | "error";
 
 export type SunPosition = { lat: number; lon: number };
+
+export type GlobeHover =
+  | { kind: "marker"; id: string; clientX: number; clientY: number }
+  | { kind: "surface"; lat: number; lon: number; clientX: number; clientY: number };
 
 const RADIUS = 2;
 const RELIEF_SCALE = 0.025;
@@ -166,11 +170,13 @@ function EarthSurface({
   textures,
   layers,
   onSun,
+  onHover,
   sunLight,
 }: {
   textures: EarthTextures;
   layers: PlanetLayers;
   onSun?: (sun: SunPosition) => void;
+  onHover?: (hover: GlobeHover | null) => void;
   sunLight: RefObject<THREE.DirectionalLight | null>;
 }) {
   const sunVector = useMemo(() => new THREE.Vector3(1, 0, 0), []);
@@ -211,7 +217,13 @@ function EarthSurface({
   });
 
   return (
-    <mesh>
+    <mesh
+      onPointerMove={(event: ThreeEvent<PointerEvent>) => {
+        const { lat, lon } = vec3ToLatLon(event.point);
+        onHover?.({ kind: "surface", lat, lon, clientX: event.clientX, clientY: event.clientY });
+      }}
+      onPointerLeave={() => onHover?.(null)}
+    >
       <sphereGeometry args={[RADIUS, 256, 128]} />
       <primitive object={material} attach="material" />
     </mesh>
@@ -275,10 +287,12 @@ function Marker({
   marker,
   selected,
   onSelect,
+  onHover,
 }: {
   marker: GlobeMarker;
   selected: boolean;
   onSelect?: (id: string) => void;
+  onHover?: (hover: GlobeHover | null) => void;
 }) {
   const ringRef = useRef<THREE.Mesh>(null);
   const position = useMemo(
@@ -302,11 +316,18 @@ function Marker({
           event.stopPropagation();
           onSelect?.(marker.id);
         }}
-        onPointerOver={() => {
+        onPointerMove={(event: ThreeEvent<PointerEvent>) => {
+          event.stopPropagation();
+          onHover?.({ kind: "marker", id: marker.id, clientX: event.clientX, clientY: event.clientY });
+        }}
+        onPointerOver={(event: ThreeEvent<PointerEvent>) => {
+          event.stopPropagation();
           document.body.style.cursor = "pointer";
+          onHover?.({ kind: "marker", id: marker.id, clientX: event.clientX, clientY: event.clientY });
         }}
         onPointerOut={() => {
           document.body.style.cursor = "";
+          onHover?.(null);
         }}
       >
         <sphereGeometry args={[size, 14, 14]} />
@@ -327,15 +348,19 @@ function Scene({
   layers,
   selectedId,
   onSelect,
+  onHover,
   onSun,
   onStatus,
+  paused,
 }: {
   markers: GlobeMarker[];
   layers: PlanetLayers;
   selectedId?: string | null;
   onSelect?: (id: string) => void;
+  onHover?: (hover: GlobeHover | null) => void;
   onSun?: (sun: SunPosition) => void;
   onStatus?: (status: TextureStatus) => void;
+  paused?: boolean;
 }) {
   const handleStatus = useCallback((status: TextureStatus) => onStatus?.(status), [onStatus]);
   const textures = useEarthTextures(handleStatus);
@@ -348,7 +373,7 @@ function Scene({
       <Stars radius={80} depth={40} count={3000} factor={3} saturation={0.1} fade speed={0.3} />
 
       {textures ? (
-        <EarthSurface textures={textures} layers={layers} onSun={onSun} sunLight={sunLight} />
+        <EarthSurface textures={textures} layers={layers} onSun={onSun} onHover={onHover} sunLight={sunLight} />
       ) : (
         <FallbackSurface sunLight={sunLight} />
       )}
@@ -356,7 +381,7 @@ function Scene({
       {layers.atmosphere ? <AtmosphereLayer /> : null}
 
       {markers.map((marker) => (
-        <Marker key={marker.id} marker={marker} selected={marker.id === selectedId} onSelect={onSelect} />
+        <Marker key={marker.id} marker={marker} selected={marker.id === selectedId} onSelect={onSelect} onHover={onHover} />
       ))}
 
       <OrbitControls
@@ -364,7 +389,7 @@ function Scene({
         enableDamping
         minDistance={3.2}
         maxDistance={9}
-        autoRotate={layers.autoRotate}
+        autoRotate={layers.autoRotate && !paused}
         autoRotateSpeed={0.35}
       />
     </>
@@ -376,16 +401,20 @@ export function PlanetGlobe({
   layers,
   selectedId,
   onSelect,
+  onHover,
   onSun,
   onStatus,
+  paused,
   className,
 }: {
   markers: GlobeMarker[];
   layers: PlanetLayers;
   selectedId?: string | null;
   onSelect?: (id: string) => void;
+  onHover?: (hover: GlobeHover | null) => void;
   onSun?: (sun: SunPosition) => void;
   onStatus?: (status: TextureStatus) => void;
+  paused?: boolean;
   className?: string;
 }) {
   return (
@@ -400,8 +429,10 @@ export function PlanetGlobe({
           layers={layers}
           selectedId={selectedId}
           onSelect={onSelect}
+          onHover={onHover}
           onSun={onSun}
           onStatus={onStatus}
+          paused={paused}
         />
       </Canvas>
     </div>

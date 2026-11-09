@@ -393,7 +393,26 @@ export type WorkspaceSearch = {
   limit_reached: boolean;
 };
 
-export type NewsLocation = { lat: number; lon: number; label?: string };
+export type NewsLocation = {
+  lat: number;
+  lon: number;
+  label?: string;
+  /** "headline": place named in the story. "source": approximate outlet region. */
+  precision?: "headline" | "source";
+};
+
+export type LocationInfo = {
+  lat: number;
+  lon: number;
+  title: string | null;
+  description: string | null;
+  extract: string | null;
+  url: string | null;
+  distance_m: number | null;
+  source: string;
+  reachable: boolean;
+  error: string | null;
+};
 
 export type NewsArticle = {
   id: string;

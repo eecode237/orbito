@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.config import settings
+from app.core.workflows import engine as workflow_engine
+from app.db import repositories as repo
 from app.db.repositories import ensure_demo_user
 from app.db.session import engine, init_db
 from app.logging import get_logger, setup_logging
@@ -24,8 +26,13 @@ async def lifespan(app: FastAPI):
     settings.upload_path.mkdir(parents=True, exist_ok=True)
     await init_db()
     await ensure_demo_user()
+    interrupted = await repo.reconcile_interrupted_workflow_runs()
+    if interrupted:
+        logger.warning("marked %s interrupted workflow run(s) as failed", interrupted)
+    workflow_engine.start()
     logger.info("%s v%s ready (%s)", settings.app_name, settings.app_version, settings.app_env)
     yield
+    await workflow_engine.stop()
     await engine.dispose()
 
 

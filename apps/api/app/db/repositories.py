@@ -11,11 +11,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.db.models import (
+    AuditLog,
     Conversation,
     FileRecord,
     JobApplication,
@@ -1282,3 +1283,103 @@ async def list_workflow_runs(
     except Exception as exc:
         logger.warning("workflow run list failed: %s", exc)
         return []
+
+
+async def get_workflow_run(run_id: str) -> WorkflowRun | None:
+    try:
+        async with SessionLocal() as session:
+            return await session.get(WorkflowRun, run_id)
+    except Exception as exc:
+        logger.warning("workflow run lookup failed: %s", exc)
+        return None
+
+
+async def get_workflow_by_id(workflow_id: str) -> Workflow | None:
+    try:
+        async with SessionLocal() as session:
+            return await session.get(Workflow, workflow_id)
+    except Exception as exc:
+        logger.warning("workflow lookup failed: %s", exc)
+        return None
+
+
+async def claim_next_queued_workflow_run() -> str | None:
+    """Atomically move the oldest queued run to `running` and return its id."""
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(WorkflowRun.id)
+                .where(WorkflowRun.status == "queued")
+                .order_by(WorkflowRun.created_at.asc())
+                .limit(1)
+            )
+            run_id = result.scalar_one_or_none()
+            if not run_id:
+                return None
+            claimed = await session.execute(
+                update(WorkflowRun)
+                .where(WorkflowRun.id == run_id, WorkflowRun.status == "queued")
+                .values(status="running", started_at=datetime.now(UTC))
+            )
+            await session.commit()
+            return run_id if claimed.rowcount == 1 else None
+    except Exception as exc:
+        logger.warning("workflow run claim failed: %s", exc)
+        return None
+
+
+async def update_workflow_run(run_id: str, **fields: Any) -> None:
+    try:
+        async with SessionLocal() as session:
+            run = await session.get(WorkflowRun, run_id)
+            if not run:
+                return
+            for key, value in fields.items():
+                if hasattr(run, key):
+                    setattr(run, key, value)
+            await session.commit()
+    except Exception as exc:
+        logger.warning("workflow run update failed: %s", exc)
+
+
+async def reconcile_interrupted_workflow_runs() -> int:
+    """Runs left `running` by a previous process cannot resume; mark them failed."""
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(WorkflowRun).where(WorkflowRun.status == "running")
+            )
+            rows = list(result.scalars())
+            for run in rows:
+                run.status = "failed"
+                run.error = "Interrupted: the API restarted while this run was executing."
+                run.finished_at = datetime.now(UTC)
+            await session.commit()
+            return len(rows)
+    except Exception as exc:
+        logger.warning("workflow run reconcile failed: %s", exc)
+        return 0
+
+
+async def record_audit(
+    action: str,
+    *,
+    resource: str | None = None,
+    outcome: str = "ok",
+    detail: dict[str, Any] | None = None,
+    user_id: str = DEMO_USER_ID,
+) -> None:
+    try:
+        async with SessionLocal() as session:
+            session.add(
+                AuditLog(
+                    user_id=user_id,
+                    action=action[:120],
+                    resource=resource,
+                    outcome=outcome,
+                    detail=detail or {},
+                )
+            )
+            await session.commit()
+    except Exception as exc:
+        logger.warning("audit write failed: %s", exc)

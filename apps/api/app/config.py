@@ -83,6 +83,14 @@ class Settings(BaseSettings):
     workspace_roots: str = ""
     workspace_max_file_bytes: int = 200_000
 
+    # --- workflow runner ---------------------------------------------------
+    # The runner executes queued workflow runs in-process. Tests disable it and
+    # drive runs directly so they stay deterministic.
+    workflow_runner_enabled: bool = True
+    workflow_runner_poll_seconds: float = 2.0
+    workflow_node_timeout_seconds: float = 120.0
+    workflow_max_nodes: int = 100
+
     # --- system monitor / alerts -------------------------------------------
     # One central collector samples the host; every UI widget reads its cache.
     system_sample_seconds: float = 3.0

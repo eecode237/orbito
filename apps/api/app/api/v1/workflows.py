@@ -1,8 +1,8 @@
-"""Automation workflows: n8n-like definitions, triggers and execution records.
+"""Automation workflows: definitions, manual runs and execution records.
 
-Workflow definitions are real DB records. Execution is recorded as WorkflowRun rows.
-Autonomous/scheduled execution requires the workflow runner (planned); manual runs
-create an honest `pending_runner` record rather than fabricating execution.
+Definitions are real DB records. A manual run is queued as a WorkflowRun and
+executed by the in-process workflow runner (app.core.workflows). Schedule, webhook
+and event triggers are not executed automatically yet.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Response
 
 from app.api.schemas import WorkflowCreate, WorkflowRunCreate, WorkflowUpdate
+from app.core.workflows import engine as workflow_engine
 from app.db import repositories as repo
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
@@ -131,13 +132,19 @@ async def create_run(workflow_id: str, payload: WorkflowRunCreate) -> dict[str, 
         workflow_id,
         triggered_by=payload.triggered_by,
         input_data=payload.input,
-        status="pending_runner",
-        log=(
-            "Run queued in the database. The autonomous workflow runner is not connected yet, "
-            "so this run is recorded honestly as pending_runner (not executed, not faked). "
-            "Connect triggers, node executors and external integrations to run it."
-        ),
+        status="queued",
+        log="Queued. Waiting for the workflow runner.",
     )
     if not run:
         raise HTTPException(status_code=503, detail="Workflow run store unavailable")
+    workflow_engine.wake()
     return {"run": _run_payload(run), "workflow": _workflow_payload(workflow)}
+
+
+@router.get("/{workflow_id}/runs/{run_id}")
+async def get_run(workflow_id: str, run_id: str) -> dict[str, Any]:
+    runs = await repo.list_workflow_runs(workflow_id, limit=100)
+    for run in runs:
+        if run.id == run_id:
+            return {"run": _run_payload(run)}
+    raise HTTPException(status_code=404, detail="Workflow run not found")

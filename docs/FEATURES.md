@@ -167,9 +167,15 @@ loopback-only and native on Windows by default.
 | Feature | Status | Notes |
 |---|---|---|
 | Automation agent (workflow drafting) | ✅ | Produces plans, cannot execute schedules yet |
-| Workflow engine + triggers (time/event/webhook) | ⬜ | Phase 2 workers first |
-| Visual builder (React Flow) | ⬜ | After engine |
-| Execution history + failure notifications | ⬜ | After engine |
+| Workflow definitions CRUD (`/api/v1/workflows`) | ✅ | Real DB records: trigger, nodes, edges, status, enabled |
+| Workflow runner (manual "Run now") | ✅ | In-process loop claims queued runs; executes `trigger.*`, `action.chat` (Model Gateway), `transform`, `condition` (true/false edges), `delay` (0–60 s) |
+| Node status honesty | ✅ | Unavailable node types (`action.http`, `action.notify`, `action.task`) are `blocked` and fail the run; never marked done |
+| Interrupted-run recovery | ✅ | Runs left `running` by a restart are marked failed on startup |
+| Run audit records | ✅ | Each finished run writes an `AuditLog` row (`workflow.run`) |
+| Schedule / webhook / event / chat triggers | ⬜ | Saved in the definition only; not listening or firing yet |
+| External HTTP / notification / project-task write nodes | ⬜ | Require approval-gated connectors (Phase 4) |
+| Visual builder (React Flow) | ⬜ | Current editor is a form/list builder; graph canvas later |
+| Failure notifications | ⬜ | Not implemented |
 
 ## 13 · System Center
 

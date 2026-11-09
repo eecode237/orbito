@@ -24,6 +24,17 @@ Permission levels and approval lists exist, but approval enforcement is not a
 complete durable end-to-end gate. Until it is implemented and tested, tools
 that can mutate state, submit, send, terminate, type or click must not execute.
 
+## Workflow runner (not tool calling)
+
+Workflows (`/automations`, `/api/v1/workflows`) run through
+`app/core/workflows/engine.py`. Supported nodes are `trigger.*`, `action.chat`
+(a single Model Gateway call), `transform`, `condition` and `delay`. The runner
+does not let a model choose tools, does not run shell commands, and does not call
+external services. Nodes that would need those (`action.http`, notifications,
+project-task writes) are recorded as `blocked` and fail the run until an
+approval-gated connector exists. Only manual runs execute today; schedule,
+webhook and event triggers are stored but do not fire.
+
 ## Current agent registry
 
 Verify `apps/api/app/agents/registry.py` and `apps/api/app/agents/` before

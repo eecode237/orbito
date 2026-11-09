@@ -208,9 +208,15 @@ interaction is inspectable and bounded.
 - [ ] Add local task queue/worker only when an action must outlive an HTTP
       request. Start with one heavy local inference; keep PC actions serialized
       where concurrent UI control would race.
+- [x] Manual workflow runs (partial): a durable `queued` run is claimed by an
+      in-process runner, executes model/transform/condition/delay nodes, records
+      every node's real status and output, and audits the run. Unavailable node
+      types are blocked, not faked.
 - [ ] Add scheduled workflows only after worker durability, per-run approval
       policy, disable switch and audit retention exist. Schedules never bypass
-      approval by running unattended.
+      approval by running unattended. (Schedule triggers are saved but do not fire.)
+- [ ] Add approval-gated connectors for `action.http`, notifications and
+      project-task writes, bound to the exact payload at execution time.
 
 ### Phase 5 — Push-to-talk voice (not wake word yet)
 

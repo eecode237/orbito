@@ -1,15 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRight,
   Braces,
   CalendarClock,
   Check,
   CircleAlert,
-  Copy,
   GitBranch,
-  Globe,
   Loader2,
   MessageSquare,
   Pencil,
@@ -46,26 +44,41 @@ const STATUSES: { id: WorkflowStatus; label: string }[] = [
 ];
 
 const TRIGGERS = [
-  { id: "manual", label: "Manual", icon: Play, help: "Start from the UI or an explicit action." },
-  { id: "schedule", label: "Schedule", icon: CalendarClock, help: "Cron/time trigger (runner required)." },
-  { id: "webhook", label: "Webhook", icon: Webhook, help: "Incoming HTTP event (runner required)." },
-  { id: "event", label: "System event", icon: Zap, help: "Internal ORBITO event (runner required)." },
-  { id: "chat", label: "Chat command", icon: MessageSquare, help: "Triggered from conversation intent." },
+  { id: "manual", label: "Manual", icon: Play, help: "Runs when you press Run now." },
+  { id: "schedule", label: "Schedule", icon: CalendarClock, help: "Saved only. Automatic schedules are not running yet." },
+  { id: "webhook", label: "Webhook", icon: Webhook, help: "Saved only. Incoming webhooks are not listening yet." },
+  { id: "event", label: "System event", icon: Zap, help: "Saved only. Internal event triggers are not wired yet." },
+  { id: "chat", label: "Chat command", icon: MessageSquare, help: "Saved only. Chat-triggered workflows are not wired yet." },
 ] as const;
 
 const NODE_TYPES = [
-  { id: "trigger.manual", label: "Manual trigger" },
-  { id: "trigger.schedule", label: "Schedule trigger" },
-  { id: "trigger.webhook", label: "Webhook trigger" },
-  { id: "trigger.event", label: "System event trigger" },
-  { id: "action.chat", label: "Chat / agent action" },
-  { id: "action.http", label: "HTTP request (external)" },
-  { id: "action.notify", label: "Notification" },
-  { id: "action.task", label: "Project task action" },
-  { id: "condition", label: "Condition / branch" },
-  { id: "transform", label: "Transform data" },
-  { id: "delay", label: "Delay / wait" },
+  { id: "trigger.manual", label: "Manual trigger", ready: true },
+  { id: "trigger.schedule", label: "Schedule trigger (saved only)", ready: true },
+  { id: "trigger.webhook", label: "Webhook trigger (saved only)", ready: true },
+  { id: "trigger.event", label: "System event trigger (saved only)", ready: true },
+  { id: "action.chat", label: "Chat / model action", ready: true },
+  { id: "transform", label: "Transform text", ready: true },
+  { id: "condition", label: "Condition (true / false edges)", ready: true },
+  { id: "delay", label: "Delay (0–60 s)", ready: true },
+  { id: "action.http", label: "HTTP request — not available yet", ready: false },
+  { id: "action.notify", label: "Notification — not available yet", ready: false },
+  { id: "action.task", label: "Project task write — not available yet", ready: false },
 ];
+
+const ACTIVE_RUN = new Set(["queued", "running"]);
+type RunNode = {
+  id: string;
+  type: string;
+  label: string;
+  status: string;
+  output?: { text?: unknown; offline?: boolean } | null;
+  error?: string | null;
+};
+
+function runNodes(run: WorkflowRun): RunNode[] {
+  const raw = run.output?.nodes;
+  return Array.isArray(raw) ? (raw as RunNode[]) : [];
+}
 
 function nid() {
   return `n_${Math.random().toString(36).slice(2, 8)}`;
@@ -76,7 +89,7 @@ function eid() {
 
 function statusTone(status: string): "neutral" | "info" | "warning" | "success" | "error" {
   if (status === "active" || status === "completed") return "success";
-  if (status === "paused" || status === "pending_runner" || status === "queued") return "warning";
+  if (status === "paused" || status === "blocked" || status === "queued") return "warning";
   if (status === "failed") return "error";
   if (status === "draft" || status === "running") return "info";
   return "neutral";
@@ -177,15 +190,30 @@ export function WorkflowManager() {
     }
   }
 
+  async function refreshDetail(id: string) {
+    try {
+      const data = await getWorkflow(id);
+      setDetail(data);
+      setEditing((prev) => (prev && prev.id === id ? data.workflow : prev));
+      if (data.runs.every((r) => !ACTIVE_RUN.has(r.status))) void load();
+    } catch {
+      /* transient; the next poll retries */
+    }
+  }
+
   async function run(workflow: Workflow) {
     setBusyId(workflow.id);
     setError(null);
     try {
-      const result = await createWorkflowRun(workflow.id);
-      setDetail({ workflow: result.workflow, runs: [result.run, ...(detail?.runs ?? [])] });
+      await createWorkflowRun(workflow.id);
+      if (editing?.id === workflow.id) {
+        await refreshDetail(workflow.id);
+      } else {
+        await openDetail(workflow.id);
+      }
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not queue workflow run.");
+      setError(cause instanceof Error ? cause.message : "Could not start workflow run.");
     } finally {
       setBusyId(null);
     }
@@ -244,6 +272,7 @@ export function WorkflowManager() {
           onCancel={() => { setEditing(null); setDetail(null); }}
           onSave={(input) => save(input, editing.id)}
           onRun={() => run(editing)}
+          onRefresh={() => refreshDetail(editing.id)}
           onDelete={() => remove(editing)}
         />
       ) : null}
@@ -292,7 +321,7 @@ export function WorkflowManager() {
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border-subtle pt-3">
                 <Button variant="secondary" size="sm" onClick={() => { void openDetail(workflow.id); }}><Pencil className="h-3 w-3" /> Edit</Button>
-                <Button variant="secondary" size="sm" onClick={() => { void run(workflow); }} disabled={!workflow.enabled || busyId === workflow.id}><Play className="h-3 w-3" /> Queue run</Button>
+                <Button variant="secondary" size="sm" onClick={() => { void run(workflow); }} disabled={!workflow.enabled || busyId === workflow.id}><Play className="h-3 w-3" /> Run now</Button>
                 <button type="button" onClick={() => { void remove(workflow); }} className="ml-auto grid h-7 w-7 place-items-center rounded-md text-foreground-muted hover:bg-error/10 hover:text-error" aria-label={`Delete ${workflow.name}`}><Trash2 className="h-3 w-3" /></button>
               </div>
             </article>
@@ -301,7 +330,7 @@ export function WorkflowManager() {
       )}
 
       <p className="text-[10px] text-foreground-muted">
-        Workflow definitions are real database records. “Queue run” creates an honest <code className="rounded bg-surface-inset px-1">pending_runner</code> record until the autonomous runner, schedulers and approved external integrations are connected. Sensitive/external actions will require explicit approval and audit.
+        Definitions and run records are stored in the database. “Run now” executes manual runs on the local workflow runner: model steps use the Model Gateway (local Ollama first), and each node records its real status and output. Schedules, webhooks and external integrations are not running yet; nodes that need them are shown as blocked, never as done. External/sensitive actions will need explicit approval and audit.
       </p>
     </div>
   );
@@ -315,6 +344,7 @@ function WorkflowEditor({
   onCancel,
   onSave,
   onRun,
+  onRefresh,
   onDelete,
 }: {
   workflow?: Workflow;
@@ -324,8 +354,16 @@ function WorkflowEditor({
   onCancel: () => void;
   onSave: (input: WorkflowInput) => Promise<void>;
   onRun?: () => void;
+  onRefresh?: () => void;
   onDelete?: () => void;
 }) {
+  const hasActiveRun = runs.some((r) => ACTIVE_RUN.has(r.status));
+  useEffect(() => {
+    if (!hasActiveRun || !onRefresh) return;
+    const timer = window.setInterval(() => onRefresh(), 1500);
+    return () => window.clearInterval(timer);
+  }, [hasActiveRun, onRefresh]);
+
   const [name, setName] = useState(workflow?.name ?? "");
   const [description, setDescription] = useState(workflow?.description ?? "");
   const [status, setStatus] = useState<WorkflowStatus>(workflow?.status ?? "draft");
@@ -357,7 +395,7 @@ function WorkflowEditor({
   }
 
   function addNode() {
-    const node: WorkflowNode = { id: nid(), type: "action.chat", label: "New action", config: { agent: "core", prompt: "" } };
+    const node: WorkflowNode = { id: nid(), type: "action.chat", label: "Model step", config: { model_role: "fast", prompt: "{{previous}}" } };
     const next = [...nodes, node];
     setNodes(next);
     syncJson(next, edges);
@@ -486,6 +524,7 @@ function WorkflowEditor({
                           <select value={edge.source} onChange={(e) => { const next = edges.map(x=>x.id===edge.id?{...x,source:e.target.value}:x); setEdges(next); syncJson(nodes,next); }} className="min-w-0 flex-1 rounded bg-transparent text-foreground outline-none">{nodes.map(n => <option key={n.id} value={n.id}>{n.label || n.id}</option>)}</select>
                           <ArrowRight className="h-3 w-3 shrink-0 text-foreground-muted" />
                           <select value={edge.target} onChange={(e) => { const next = edges.map(x=>x.id===edge.id?{...x,target:e.target.value}:x); setEdges(next); syncJson(nodes,next); }} className="min-w-0 flex-1 rounded bg-transparent text-foreground outline-none">{nodes.map(n => <option key={n.id} value={n.id}>{n.label || n.id}</option>)}</select>
+                          <select value={edge.label ?? ""} onChange={(e) => { const next = edges.map(x=>x.id===edge.id?{...x,label:e.target.value || undefined}:x); setEdges(next); syncJson(nodes,next); }} aria-label="Edge label" className="w-20 rounded bg-transparent text-[9.5px] text-foreground-secondary outline-none"><option value="">always</option><option value="true">if true</option><option value="false">if false</option></select>
                           <button type="button" onClick={() => { const next = edges.filter(x=>x.id!==edge.id); setEdges(next); syncJson(nodes,next); }} className="text-foreground-muted hover:text-error" aria-label="Remove edge"><X className="h-3 w-3" /></button>
                         </div>
                       ))}
@@ -498,7 +537,7 @@ function WorkflowEditor({
 
           {formError ? <p className="text-[11px] text-error">{formError}</p> : null}
           <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle pt-3">
-            {workflow && onRun ? <Button variant="secondary" type="button" onClick={onRun} disabled={busy || !workflow.enabled}><Play className="h-3.5 w-3.5" /> Queue run</Button> : null}
+            {workflow && onRun ? <Button variant="secondary" type="button" onClick={onRun} disabled={busy || !workflow.enabled}><Play className="h-3.5 w-3.5" /> Run now</Button> : null}
             {workflow && onDelete ? <Button variant="outline" type="button" onClick={onDelete} className="text-error hover:border-error/40"><Trash2 className="h-3.5 w-3.5" /> Delete</Button> : null}
             <div className="ml-auto flex gap-2">
               <Button variant="outline" type="button" onClick={onCancel}>Cancel</Button>
@@ -518,8 +557,24 @@ function WorkflowEditor({
                     <span className="text-[9.5px] text-foreground-muted">{run.triggered_by} · {formatRelative(run.created_at)}</span>
                     <span className="font-mono text-[8.5px] text-foreground-muted">{run.id.slice(0, 8)}</span>
                   </div>
-                  {run.log ? <p className="mt-1 text-[10px] leading-relaxed text-foreground-secondary">{run.log}</p> : null}
                   {run.error ? <p className="mt-1 text-[10px] text-error">{run.error}</p> : null}
+                  {runNodes(run).length ? (
+                    <ol className="mt-2 space-y-1">
+                      {runNodes(run).map((node) => (
+                        <li key={node.id} className="rounded-md bg-surface px-2 py-1.5 text-[10px]">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge tone={statusTone(node.status)}>{node.status}</Badge>
+                            <span className="font-medium text-foreground">{node.label}</span>
+                            <span className="font-mono text-[8.5px] text-foreground-muted">{node.type}</span>
+                            {node.output?.offline ? <Badge tone="warning">offline model</Badge> : null}
+                          </div>
+                          {node.output?.text ? <p className="mt-1 whitespace-pre-wrap text-foreground-secondary">{String(node.output.text).slice(0, 600)}</p> : null}
+                          {node.error ? <p className="mt-1 text-error">{node.error}</p> : null}
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
+                  {run.log ? <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-surface-inset/60 p-2 font-mono text-[9px] text-foreground-muted">{run.log}</pre> : null}
                 </div>
               ))}
             </div>

@@ -102,3 +102,30 @@ def test_project_task_validates_status_priority_and_date():
         assert client.post(
             "/api/v1/project-tasks", json={"title": "Bad date", "scheduled_for": "tomorrow"}
         ).status_code == 422
+
+
+def test_run_endpoint_starts_linked_execution_and_refuses_done_items():
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/v1/project-tasks",
+            json={"title": "Draft a summary of the backlog", "description": "Keep it to five bullets."},
+        )
+        item_id = created.json()["item"]["id"]
+
+        run = client.post(f"/api/v1/project-tasks/{item_id}/run")
+        assert run.status_code == 200, run.text
+        body = run.json()
+        assert body["task_id"]
+        assert body["message"].strip()
+        assert body["item"]["execution_task_id"] == body["task_id"]
+        assert body["item"]["status"] == "in_progress"
+
+        execution = client.get(f"/api/v1/tasks/{body['task_id']}")
+        assert execution.status_code == 200
+        assert execution.json()["status"] == "completed"
+
+        client.patch(f"/api/v1/project-tasks/{item_id}", json={"status": "done"})
+        refused = client.post(f"/api/v1/project-tasks/{item_id}/run")
+        assert refused.status_code == 409
+
+        assert client.post("/api/v1/project-tasks/00000000-0000-4000-8000-00000000dead/run").status_code == 404

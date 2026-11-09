@@ -597,3 +597,78 @@ export async function markAllNotificationsRead(): Promise<number> {
   const result = await apiSend<{ updated: number }>("/api/v1/notifications/read-all", "POST");
   return result.updated;
 }
+
+import type { ApplicationStatus, JobApplication, StoredFile, StudyCard } from "@/lib/types";
+
+export async function getApplications(): Promise<{ applications: JobApplication[]; counts: Record<string, number> }> {
+  return apiGet("/api/v1/jobs/applications");
+}
+
+export async function createApplication(input: {
+  company: string;
+  role: string;
+  url?: string | null;
+  status?: ApplicationStatus;
+  match_score?: number | null;
+  notes?: string | null;
+}): Promise<JobApplication> {
+  const result = await apiSend<{ application: JobApplication }>("/api/v1/jobs/applications", "POST", input);
+  return result.application;
+}
+
+export async function updateApplication(id: string, input: { status?: ApplicationStatus; notes?: string | null }): Promise<JobApplication> {
+  const result = await apiSend<{ application: JobApplication }>(
+    `/api/v1/jobs/applications/${encodeURIComponent(id)}`,
+    "PATCH",
+    input,
+  );
+  return result.application;
+}
+
+export async function deleteApplication(id: string): Promise<void> {
+  await apiSend(`/api/v1/jobs/applications/${encodeURIComponent(id)}`, "DELETE");
+}
+
+export async function getStudyCards(deck?: string): Promise<{ cards: StudyCard[]; decks: Record<string, number> }> {
+  const query = deck ? `?deck=${encodeURIComponent(deck)}` : "";
+  return apiGet(`/api/v1/academy/cards${query}`);
+}
+
+export async function createStudyCard(input: { deck: string; front: string; back: string }): Promise<StudyCard> {
+  const result = await apiSend<{ card: StudyCard }>("/api/v1/academy/cards", "POST", input);
+  return result.card;
+}
+
+export async function reviewStudyCard(id: string): Promise<StudyCard> {
+  const result = await apiSend<{ card: StudyCard }>(`/api/v1/academy/cards/${encodeURIComponent(id)}/review`, "POST");
+  return result.card;
+}
+
+export async function deleteStudyCard(id: string): Promise<void> {
+  await apiSend(`/api/v1/academy/cards/${encodeURIComponent(id)}`, "DELETE");
+}
+
+export async function getFiles(): Promise<{ files: StoredFile[] }> {
+  return apiGet("/api/v1/files");
+}
+
+export async function uploadFile(file: File): Promise<StoredFile> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${API_URL}/api/v1/files/upload`, { method: "POST", body: form });
+  if (!response.ok) throw new ApiError(await parseError(response), response.status);
+  return (await response.json()) as StoredFile;
+}
+
+export type ProjectTaskRun = {
+  task_id: string | null;
+  message: string;
+  model: { provider: string; name: string; label?: string; offline?: boolean } | null;
+  cost_usd: number;
+  item: ProjectTask | null;
+};
+
+/** Start a real ORBITO run for a project item. The server links the run to the item. */
+export async function runProjectTask(id: string): Promise<ProjectTaskRun> {
+  return apiSend<ProjectTaskRun>(`/api/v1/project-tasks/${encodeURIComponent(id)}/run`, "POST");
+}

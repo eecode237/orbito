@@ -22,6 +22,8 @@ import {
 
 import {
   createProjectTask,
+  runProjectTask,
+  type ProjectTaskRun,
   deleteProjectTask,
   getProjectTaskBoard,
   updateProjectTask,
@@ -89,6 +91,8 @@ export function TaskManager() {
   const [editing, setEditing] = useState<ProjectTask | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [runResults, setRunResults] = useState<Record<string, { task_id: string | null; message: string }>>({});
 
   const loadBoard = useCallback(async (dateOverride?: string) => {
     const date = dateOverride || targetDate || localDate(new Date());
@@ -170,6 +174,21 @@ export function TaskManager() {
     } finally {
       setBusyId(null);
       setDraggedId(null);
+    }
+  }
+
+  async function runItem(item: ProjectTask) {
+    if (runningId) return;
+    setRunningId(item.id);
+    setError(null);
+    try {
+      const result: ProjectTaskRun = await runProjectTask(item.id);
+      setRunResults((prev) => ({ ...prev, [item.id]: { task_id: result.task_id, message: result.message } }));
+      await loadBoard();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The run could not start.");
+    } finally {
+      setRunningId(null);
     }
   }
 
@@ -321,6 +340,8 @@ export function TaskManager() {
                       item={item}
                       selected={selected?.id === item.id}
                       onSelect={(next) => setSelectedId(next.id)}
+                      onRun={runItem}
+                      running={runningId === item.id}
                       onEdit={openEdit}
                       onDelete={removeItem}
                       onMove={moveItem}
@@ -359,6 +380,9 @@ export function TaskManager() {
         }}
         onMove={moveItem}
         onDelete={removeItem}
+        onRun={runItem}
+        running={runningId === selected.id}
+        runResult={runResults[selected.id] ?? null}
         busy={busyId === selected.id}
       />
     ) : null}
@@ -372,6 +396,9 @@ function TaskDetailsPanel({
   onSave,
   onMove,
   onDelete,
+  onRun,
+  running,
+  runResult,
   busy,
 }: {
   item: ProjectTask;
@@ -379,6 +406,9 @@ function TaskDetailsPanel({
   onSave: (id: string, input: Partial<ProjectTaskInput>) => Promise<void>;
   onMove: (item: ProjectTask, status: ProjectTaskStatus) => void;
   onDelete: (item: ProjectTask) => void;
+  onRun: (item: ProjectTask) => void;
+  running: boolean;
+  runResult: { task_id: string | null; message: string } | null;
   busy: boolean;
 }) {
   const [title, setTitle] = useState(item.title);
@@ -486,15 +516,30 @@ function TaskDetailsPanel({
             <p className="text-[11px] text-foreground-muted">No run linked yet.</p>
           )}
           {item.status !== "done" ? (
-            <Link
-              href={`/chat?q=${encodeURIComponent(`Work on ${item.key}: ${item.title}${item.description ? `\n\nContext:\n${item.description}` : ""}`)}&project_task=${encodeURIComponent(item.id)}`}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary/10 px-3 text-[11px] font-medium text-primary-hover transition hover:bg-primary/20"
-            >
-              <Zap className="h-3.5 w-3.5" /> Run with ORBITO
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="primary" size="sm" onClick={() => onRun(item)} disabled={running}>
+                {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />} {running ? "Running…" : "Run with ORBITO"}
+              </Button>
+              <Link
+                href={`/chat?q=${encodeURIComponent(`Work on ${item.key}: ${item.title}${item.description ? `\n\nContext:\n${item.description}` : ""}`)}&project_task=${encodeURIComponent(item.id)}`}
+                className="text-[10.5px] text-foreground-muted hover:text-foreground hover:underline"
+              >
+                Open in chat
+              </Link>
+            </div>
           ) : (
             <p className="inline-flex items-center gap-1 text-[11px] text-success"><CircleCheck className="h-3.5 w-3.5" /> Completed {formatRelative(item.completed_at)}</p>
           )}
+          {runResult ? (
+            <div className="space-y-2 rounded-lg border border-border-subtle bg-surface-inset/50 p-3">
+              <p className="text-[10px] text-foreground-muted">
+                Run result from this session{runResult.task_id ? (
+                  <> · <Link href={`/agents/monitor?task=${encodeURIComponent(runResult.task_id)}`} className="text-info hover:underline">open execution</Link></>
+                ) : null}
+              </p>
+              <p className="max-h-64 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-foreground-secondary">{runResult.message || "The model returned no text."}</p>
+            </div>
+          ) : null}
         </section>
 
         <section className="space-y-1 border-t border-border-subtle pt-4 text-[10px] text-foreground-muted">
@@ -602,6 +647,8 @@ function TaskCard({
   item,
   selected,
   onSelect,
+  onRun,
+  running,
   onEdit,
   onDelete,
   onMove,
@@ -611,13 +658,14 @@ function TaskCard({
   item: ProjectTask;
   selected: boolean;
   onSelect: (item: ProjectTask) => void;
+  onRun: (item: ProjectTask) => void;
+  running: boolean;
   onEdit: (item: ProjectTask) => void;
   onDelete: (item: ProjectTask) => void;
   onMove: (item: ProjectTask, status: ProjectTaskStatus) => void;
   onDragStart: (event: React.DragEvent<HTMLElement>) => void;
   busy: boolean;
 }) {
-  const chatQuery = `Work on ${item.key}: ${item.title}${item.description ? `\n\nContext:\n${item.description}` : ""}`;
   return (
     <article
       draggable
@@ -649,12 +697,14 @@ function TaskCard({
       ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border-subtle pt-2">
         {item.status !== "done" ? (
-          <Link
-            href={`/chat?q=${encodeURIComponent(chatQuery)}&project_task=${encodeURIComponent(item.id)}`}
-            className="inline-flex h-7 items-center gap-1 rounded-md bg-primary/10 px-2 text-[9.5px] font-medium text-primary-hover transition hover:bg-primary/20"
+          <button
+            type="button"
+            onClick={() => onRun(item)}
+            disabled={running}
+            className="inline-flex h-7 items-center gap-1 rounded-md bg-primary/10 px-2 text-[9.5px] font-medium text-primary-hover transition hover:bg-primary/20 disabled:opacity-60"
           >
-            <Zap className="h-3 w-3" /> Run with ORBITO
-          </Link>
+            {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />} {running ? "Running…" : "Run"}
+          </button>
         ) : (
           <span className="inline-flex items-center gap-1 text-[9.5px] text-success"><CircleCheck className="h-3 w-3" /> Completed</span>
         )}

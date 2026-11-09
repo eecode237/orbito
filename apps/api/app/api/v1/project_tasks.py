@@ -7,7 +7,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Response
 
-from app.api.schemas import ProjectWorkItemCreate, ProjectWorkItemUpdate
+from app.api.schemas import ChatRequest, ProjectWorkItemCreate, ProjectWorkItemUpdate
+from app.api.v1.chat import chat as run_chat
 from app.db import repositories as repo
 
 router = APIRouter(prefix="/project-tasks", tags=["project-tasks"])
@@ -139,3 +140,30 @@ async def delete(item_id: str) -> Response:
     if not await repo.delete_project_work_item(item_id):
         raise HTTPException(status_code=404, detail="Project task not found")
     return Response(status_code=204)
+
+
+@router.post("/{item_id}/run")
+async def run_project_task(item_id: str) -> dict[str, Any]:
+    """Start a real ORBITO run for this item. The run is linked back to the item by the runner."""
+    item = await repo.get_project_work_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Project task not found")
+    if item.status == "done":
+        raise HTTPException(
+            status_code=409,
+            detail="This project task is already marked done. Reopen it before starting another run.",
+        )
+    message = f"Work on {item.key}: {item.title}"
+    if item.description:
+        message += f"\n\nContext:\n{item.description}"
+    response = await run_chat(
+        ChatRequest(message=message, agent="core", project_task_id=item_id, stream=False)
+    )
+    refreshed = await repo.get_project_work_item(item_id)
+    return {
+        "task_id": response.task_id,
+        "message": response.message,
+        "model": response.model,
+        "cost_usd": response.cost_usd,
+        "item": _item_payload(refreshed) if refreshed else None,
+    }

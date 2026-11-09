@@ -700,3 +700,36 @@ export type NotificationItem = {
   read: boolean;
   created_at: string | null;
 };
+
+export type ApplicationStatus = "saved" | "applied" | "interview" | "offer" | "rejected" | "withdrawn";
+
+export type JobApplication = {
+  id: string;
+  company: string;
+  role: string;
+  url: string | null;
+  status: ApplicationStatus | string;
+  match_score: number | null;
+  notes: string | null;
+  applied_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type StudyCard = {
+  id: string;
+  deck: string;
+  front: string;
+  back: string;
+  review_count: number;
+  last_reviewed_at: string | null;
+  created_at: string | null;
+};
+
+export type StoredFile = {
+  id: string;
+  name: string;
+  size: number;
+  mime: string | null;
+  created_at: string | null;
+};

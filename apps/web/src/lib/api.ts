@@ -525,3 +525,75 @@ export async function deleteWorkflow(id: string): Promise<void> {
 export async function createWorkflowRun(id: string, input: Record<string, unknown> = {}): Promise<{ run: WorkflowRun; workflow: Workflow }> {
   return apiSend(`/api/v1/workflows/${encodeURIComponent(id)}/runs`, "POST", { triggered_by: "manual", input });
 }
+
+import type { Approval, AuditEvent, NotificationItem, SafetyStatus } from "@/lib/types";
+
+export async function getSafetyStatus(): Promise<SafetyStatus> {
+  return apiGet("/api/v1/safety/status");
+}
+
+export async function setKillSwitch(engaged: boolean): Promise<SafetyStatus["kill_switch"]> {
+  const result = await apiSend<{ kill_switch: SafetyStatus["kill_switch"] }>(
+    "/api/v1/safety/kill-switch",
+    "POST",
+    { engaged },
+  );
+  return result.kill_switch;
+}
+
+export async function setPcControl(enabled: boolean): Promise<SafetyStatus["pc_control"]> {
+  const result = await apiSend<{ pc_control: SafetyStatus["pc_control"] }>(
+    "/api/v1/safety/pc-control",
+    "POST",
+    { enabled },
+  );
+  return result.pc_control;
+}
+
+export async function getApprovals(status = "pending"): Promise<{ approvals: Approval[] }> {
+  return apiGet(`/api/v1/approvals?status=${encodeURIComponent(status)}`);
+}
+
+export async function decideApproval(
+  id: string,
+  approved: boolean,
+  payloadHash: string,
+  note?: string,
+): Promise<Approval> {
+  const result = await apiSend<{ approval: Approval }>(
+    `/api/v1/approvals/${encodeURIComponent(id)}/decision`,
+    "POST",
+    { approved, payload_hash: payloadHash, note: note || null },
+  );
+  return result.approval;
+}
+
+export async function getAuditEvents(params: {
+  action?: string;
+  outcome?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ events: AuditEvent[]; total: number; limit: number; offset: number }> {
+  const search = new URLSearchParams({
+    limit: String(params.limit ?? 50),
+    offset: String(params.offset ?? 0),
+  });
+  if (params.action?.trim()) search.set("action", params.action.trim());
+  if (params.outcome && params.outcome !== "all") search.set("outcome", params.outcome);
+  return apiGet(`/api/v1/audit?${search.toString()}`);
+}
+
+export async function getNotifications(
+  unreadOnly = false,
+): Promise<{ notifications: NotificationItem[]; unread: number }> {
+  return apiGet(`/api/v1/notifications${unreadOnly ? "?unread=true" : ""}`);
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await apiSend(`/api/v1/notifications/${encodeURIComponent(id)}/read`, "POST");
+}
+
+export async function markAllNotificationsRead(): Promise<number> {
+  const result = await apiSend<{ updated: number }>("/api/v1/notifications/read-all", "POST");
+  return result.updated;
+}

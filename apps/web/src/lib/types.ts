@@ -657,3 +657,46 @@ export type WorkflowRun = {
   finished_at: string | null;
   created_at: string | null;
 };
+
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired" | "consumed";
+
+export type Approval = {
+  id: string;
+  action: string;
+  summary: string;
+  payload: Record<string, unknown>;
+  payload_hash: string;
+  status: ApprovalStatus | string;
+  requested_by: string | null;
+  decision_note: string | null;
+  expires_at: string | null;
+  decided_at: string | null;
+  consumed_at: string | null;
+  created_at: string | null;
+};
+
+export type AuditEvent = {
+  id: string;
+  action: string;
+  resource: string | null;
+  outcome: string;
+  detail: Record<string, unknown>;
+  created_at: string | null;
+};
+
+export type SafetyStatus = {
+  kill_switch: { engaged: boolean };
+  pc_control: { enabled: boolean; executors_installed: boolean };
+  loopback_only: boolean;
+  pending_approvals: number;
+  actions: { automatic: string[]; approval: string[]; restricted: string[] };
+};
+
+export type NotificationItem = {
+  id: string;
+  title: string;
+  body: string | null;
+  kind: string;
+  read: boolean;
+  created_at: string | null;
+};

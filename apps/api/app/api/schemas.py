@@ -194,3 +194,24 @@ class WorkflowUpdate(BaseModel):
 class WorkflowRunCreate(BaseModel):
     triggered_by: str = Field(default="manual", max_length=40)
     input: dict[str, Any] = Field(default_factory=dict)
+
+
+class ApprovalCreate(BaseModel):
+    action: str = Field(min_length=1, max_length=80)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    summary: str = Field(min_length=1, max_length=2000)
+    ttl_seconds: int = Field(default=900, ge=60, le=86_400)
+
+
+class ApprovalDecisionRequest(BaseModel):
+    approved: bool
+    payload_hash: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class KillSwitchUpdate(BaseModel):
+    engaged: bool
+
+
+class PcControlUpdate(BaseModel):
+    enabled: bool

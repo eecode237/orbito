@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.db.models import (
+    ApprovalRequest,
     AuditLog,
     Conversation,
     FileRecord,
@@ -23,7 +24,9 @@ from app.db.models import (
     Memory,
     Message,
     ModelUsage,
+    Notification,
     ProjectWorkItem,
+    RuntimeSetting,
     ScrapingJob,
     ScrapingResult,
     Task,
@@ -1383,3 +1386,277 @@ async def record_audit(
             await session.commit()
     except Exception as exc:
         logger.warning("audit write failed: %s", exc)
+
+
+# --- safety: approvals, runtime settings, notifications ---------------------
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+async def create_approval(
+    *,
+    action: str,
+    summary: str,
+    payload: dict[str, Any],
+    payload_hash: str,
+    expires_at: datetime,
+    requested_by: str | None = None,
+    user_id: str = DEMO_USER_ID,
+) -> ApprovalRequest | None:
+    try:
+        async with SessionLocal() as session:
+            row = ApprovalRequest(
+                user_id=user_id,
+                action=action,
+                summary=summary[:2000],
+                payload=payload,
+                payload_hash=payload_hash,
+                status="pending",
+                requested_by=requested_by,
+                expires_at=expires_at,
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            return row
+    except Exception as exc:
+        logger.warning("approval create failed: %s", exc)
+        return None
+
+
+async def expire_stale_approvals(user_id: str = DEMO_USER_ID) -> int:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(ApprovalRequest).where(
+                    ApprovalRequest.user_id == user_id,
+                    ApprovalRequest.status == "pending",
+                )
+            )
+            now = datetime.now(UTC)
+            count = 0
+            for row in result.scalars():
+                if _aware(row.expires_at) <= now:
+                    row.status = "expired"
+                    count += 1
+            await session.commit()
+            return count
+    except Exception as exc:
+        logger.warning("approval expiry failed: %s", exc)
+        return 0
+
+
+async def list_approvals(
+    *, user_id: str = DEMO_USER_ID, status: str | None = None, limit: int = 100
+) -> list[ApprovalRequest]:
+    try:
+        async with SessionLocal() as session:
+            statement = select(ApprovalRequest).where(ApprovalRequest.user_id == user_id)
+            if status and status != "all":
+                statement = statement.where(ApprovalRequest.status == status)
+            result = await session.execute(
+                statement.order_by(ApprovalRequest.created_at.desc()).limit(max(1, min(limit, 500)))
+            )
+            return list(result.scalars())
+    except Exception as exc:
+        logger.warning("approval list failed: %s", exc)
+        return []
+
+
+async def get_approval(approval_id: str, user_id: str = DEMO_USER_ID) -> ApprovalRequest | None:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(ApprovalRequest).where(
+                    ApprovalRequest.id == approval_id, ApprovalRequest.user_id == user_id
+                )
+            )
+            return result.scalar_one_or_none()
+    except Exception as exc:
+        logger.warning("approval lookup failed: %s", exc)
+        return None
+
+
+async def decide_approval(
+    approval_id: str,
+    *,
+    approved: bool,
+    payload_hash: str,
+    note: str | None = None,
+    user_id: str = DEMO_USER_ID,
+) -> tuple[ApprovalRequest | None, str]:
+    """Record a decision. Returns (row, reason). The hash must match the stored payload."""
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(ApprovalRequest).where(
+                    ApprovalRequest.id == approval_id, ApprovalRequest.user_id == user_id
+                )
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                return None, "not_found"
+            if row.payload_hash != payload_hash:
+                return row, "hash_mismatch"
+            if row.status != "pending":
+                return row, f"already_{row.status}"
+            if _aware(row.expires_at) <= datetime.now(UTC):
+                row.status = "expired"
+                await session.commit()
+                return row, "expired"
+            row.status = "approved" if approved else "rejected"
+            row.decided_at = datetime.now(UTC)
+            row.decision_note = (note or "")[:2000] or None
+            await session.commit()
+            await session.refresh(row)
+            return row, "ok"
+    except Exception as exc:
+        logger.warning("approval decision failed: %s", exc)
+        return None, "error"
+
+
+async def consume_approval(
+    approval_id: str,
+    *,
+    action: str,
+    payload_hash: str,
+    user_id: str = DEMO_USER_ID,
+) -> str:
+    """Atomically spend an approval for exactly one execution. Returns "ok" or a denial reason."""
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                update(ApprovalRequest)
+                .where(
+                    ApprovalRequest.id == approval_id,
+                    ApprovalRequest.user_id == user_id,
+                    ApprovalRequest.status == "approved",
+                    ApprovalRequest.action == action,
+                    ApprovalRequest.payload_hash == payload_hash,
+                    ApprovalRequest.expires_at > datetime.now(UTC),
+                )
+                .values(status="consumed", consumed_at=datetime.now(UTC))
+            )
+            await session.commit()
+            if result.rowcount == 1:
+                return "ok"
+            row = await session.get(ApprovalRequest, approval_id)
+            if row is None:
+                return "not_found"
+            if row.status == "consumed":
+                return "already_consumed"
+            if row.status != "approved":
+                return f"not_approved:{row.status}"
+            if row.action != action:
+                return "action_mismatch"
+            if row.payload_hash != payload_hash:
+                return "payload_mismatch"
+            return "expired"
+    except Exception as exc:
+        logger.warning("approval consume failed: %s", exc)
+        return "error"
+
+
+async def get_runtime_setting(key: str, default: dict[str, Any]) -> dict[str, Any]:
+    try:
+        async with SessionLocal() as session:
+            row = await session.get(RuntimeSetting, key)
+            return dict(row.value) if row else dict(default)
+    except Exception as exc:
+        logger.warning("runtime setting read failed: %s", exc)
+        return dict(default)
+
+
+async def set_runtime_setting(key: str, value: dict[str, Any]) -> None:
+    async with SessionLocal() as session:
+        row = await session.get(RuntimeSetting, key)
+        if row is None:
+            session.add(RuntimeSetting(key=key, value=value))
+        else:
+            row.value = value
+            row.updated_at = datetime.now(UTC)
+        await session.commit()
+
+
+async def list_audit(
+    *,
+    user_id: str = DEMO_USER_ID,
+    action: str | None = None,
+    outcome: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[AuditLog], int]:
+    try:
+        async with SessionLocal() as session:
+            statement = select(AuditLog).where(AuditLog.user_id == user_id)
+            count_statement = select(func.count(AuditLog.id)).where(AuditLog.user_id == user_id)
+            if action:
+                statement = statement.where(AuditLog.action.like(f"%{action}%"))
+                count_statement = count_statement.where(AuditLog.action.like(f"%{action}%"))
+            if outcome and outcome != "all":
+                statement = statement.where(AuditLog.outcome == outcome)
+                count_statement = count_statement.where(AuditLog.outcome == outcome)
+            total = int((await session.execute(count_statement)).scalar_one() or 0)
+            result = await session.execute(
+                statement.order_by(AuditLog.created_at.desc())
+                .offset(max(0, offset))
+                .limit(max(1, min(limit, 500)))
+            )
+            return list(result.scalars()), total
+    except Exception as exc:
+        logger.warning("audit list failed: %s", exc)
+        return [], 0
+
+
+async def create_notification(
+    *, title: str, body: str | None = None, kind: str = "info", user_id: str = DEMO_USER_ID
+) -> str | None:
+    try:
+        async with SessionLocal() as session:
+            row = Notification(user_id=user_id, title=title[:200], body=body, kind=kind)
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            return row.id
+    except Exception as exc:
+        logger.warning("notification write failed: %s", exc)
+        return None
+
+
+async def list_notifications(
+    *, user_id: str = DEMO_USER_ID, unread_only: bool = False, limit: int = 100
+) -> list[Notification]:
+    try:
+        async with SessionLocal() as session:
+            statement = select(Notification).where(Notification.user_id == user_id)
+            if unread_only:
+                statement = statement.where(Notification.read.is_(False))
+            result = await session.execute(
+                statement.order_by(Notification.created_at.desc()).limit(max(1, min(limit, 500)))
+            )
+            return list(result.scalars())
+    except Exception as exc:
+        logger.warning("notification list failed: %s", exc)
+        return []
+
+
+async def mark_notifications_read(
+    *, notification_id: str | None = None, user_id: str = DEMO_USER_ID
+) -> int:
+    try:
+        async with SessionLocal() as session:
+            statement = update(Notification).where(
+                Notification.user_id == user_id, Notification.read.is_(False)
+            )
+            if notification_id:
+                statement = statement.where(Notification.id == notification_id)
+            result = await session.execute(statement.values(read=True))
+            await session.commit()
+            return int(result.rowcount or 0)
+    except Exception as exc:
+        logger.warning("notification update failed: %s", exc)
+        return 0

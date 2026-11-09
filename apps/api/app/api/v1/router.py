@@ -12,7 +12,9 @@ from app.api.v1 import (
     intel,
     memory,
     model_hub,
+    notifications,
     project_tasks,
+    safety,
     scraping,
     system,
     tasks,
@@ -30,6 +32,8 @@ api_router.include_router(workspaces.router)
 api_router.include_router(tasks.router)
 api_router.include_router(project_tasks.router)
 api_router.include_router(workflows.router)
+api_router.include_router(safety.router)
+api_router.include_router(notifications.router)
 api_router.include_router(conversations.router)
 api_router.include_router(memory.router)
 api_router.include_router(scraping.router)

@@ -236,6 +236,12 @@ class WorkflowEngine:
             log="\n".join(log),
             finished_at=datetime.now(UTC),
         )
+        if status == "failed":
+            await repo.create_notification(
+                title=f"Workflow run failed: {workflow.name}",
+                body=error,
+                kind="workflow",
+            )
         await repo.record_audit(
             "workflow.run",
             resource=f"workflow:{run.workflow_id}",

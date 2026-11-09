@@ -25,6 +25,10 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def _work_item_key() -> str:
+    return f"ORB-{uuid.uuid4().hex[:8].upper()}"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -124,6 +128,26 @@ class Task(Base, TimestampMixin):
     steps: Mapped[list[TaskStep]] = relationship(
         back_populates="task", cascade="all, delete-orphan", order_by="TaskStep.index"
     )
+
+
+class ProjectWorkItem(Base, TimestampMixin):
+    """User-managed project/backlog item, distinct from one execution Task."""
+
+    __tablename__ = "project_work_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    key: Mapped[str] = mapped_column(String(20), unique=True, index=True, default=_work_item_key)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(24), default="backlog", index=True)
+    priority: Mapped[str] = mapped_column(String(16), default="normal")
+    scheduled_for: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
+    due_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    estimate_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    labels: Mapped[list[str]] = mapped_column(JSON, default=list)
+    execution_task_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class TaskStep(Base):

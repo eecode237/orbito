@@ -9,6 +9,7 @@ import {
   BrainCircuit,
   Briefcase,
   Coins,
+  ClipboardList,
   FileText,
   FolderOpen,
   Gauge,
@@ -50,6 +51,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: "/", label: "Overview", icon: LayoutDashboard, exact: true },
       { href: "/chat", label: "Chat", icon: Sparkles },
+      { href: "/tasks", label: "Task Manager", icon: ClipboardList },
       { href: "/notifications", label: "Notifications", icon: Bell },
     ],
   },

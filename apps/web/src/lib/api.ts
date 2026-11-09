@@ -10,6 +10,8 @@ import type {
   LocationInfo,
   ModelLibrarySearch,
   NewsFeed,
+  ProjectTask,
+  ProjectTaskBoard,
   ProviderStatus,
   PullEvent,
   ScrapingJob,
@@ -85,6 +87,7 @@ export type ChatInput = {
   agent?: string;
   model_role?: string | null;
   workspace_id?: string | null;
+  project_task_id?: string | null;
 };
 
 /**
@@ -401,6 +404,7 @@ export type ConversationMessage = {
   content: string;
   agent?: string | null;
   model?: string | null;
+  provider?: string | null;
   created_at?: string | null;
 };
 
@@ -454,4 +458,37 @@ export async function getSystemOverview(): Promise<Record<string, unknown>> {
  */
 export async function getLocationInfo(lat: number, lon: number): Promise<LocationInfo> {
   return apiGet(`/api/v1/intel/geo/describe?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`);
+}
+
+export async function getProjectTaskBoard(
+  targetDate: string,
+  query?: string,
+): Promise<ProjectTaskBoard> {
+  const params = new URLSearchParams({ target_date: targetDate, limit: "300" });
+  if (query?.trim()) params.set("q", query.trim());
+  return apiGet(`/api/v1/project-tasks/board?${params.toString()}`);
+}
+
+export type ProjectTaskInput = Pick<ProjectTask, "title"> &
+  Partial<Pick<ProjectTask, "description" | "status" | "priority" | "scheduled_for" | "due_date" | "estimate_minutes" | "labels">>;
+
+export async function createProjectTask(input: ProjectTaskInput): Promise<ProjectTask> {
+  const result = await apiSend<{ item: ProjectTask }>("/api/v1/project-tasks", "POST", input);
+  return result.item;
+}
+
+export async function updateProjectTask(
+  id: string,
+  input: Partial<ProjectTaskInput>,
+): Promise<ProjectTask> {
+  const result = await apiSend<{ item: ProjectTask }>(
+    `/api/v1/project-tasks/${encodeURIComponent(id)}`,
+    "PATCH",
+    input,
+  );
+  return result.item;
+}
+
+export async function deleteProjectTask(id: string): Promise<void> {
+  await apiSend(`/api/v1/project-tasks/${encodeURIComponent(id)}`, "DELETE");
 }

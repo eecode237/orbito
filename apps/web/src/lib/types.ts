@@ -124,6 +124,40 @@ export type TaskList = {
   offset: number;
 };
 
+export type ProjectTaskStatus = "backlog" | "todo" | "in_progress" | "blocked" | "done";
+export type ProjectTaskPriority = "low" | "normal" | "high" | "urgent";
+
+export type ProjectTask = {
+  id: string;
+  key: string;
+  title: string;
+  description: string;
+  status: ProjectTaskStatus;
+  priority: ProjectTaskPriority;
+  scheduled_for: string | null;
+  due_date: string | null;
+  estimate_minutes: number | null;
+  labels: string[];
+  execution_task_id: string | null;
+  execution_status: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  completed_at: string | null;
+};
+
+export type ProjectTaskBoard = {
+  items: ProjectTask[];
+  total: number;
+  limit: number;
+  truncated: boolean;
+  target_date: string;
+  tomorrow: string;
+  counts: Record<ProjectTaskStatus, number> & {
+    scheduled_today: number;
+    scheduled_tomorrow: number;
+  };
+};
+
 export type UsageSummary = {
   requests: number;
   prompt_tokens: number;

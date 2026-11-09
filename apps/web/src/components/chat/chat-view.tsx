@@ -76,11 +76,13 @@ export function ChatView({
   initialAgent = "auto",
   initialModelRole = "",
   initialConversationId = "",
+  initialProjectTaskId = "",
 }: {
   initialQuery?: string;
   initialAgent?: string;
   initialModelRole?: string;
   initialConversationId?: string;
+  initialProjectTaskId?: string;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -109,6 +111,7 @@ export function ChatView({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autoSentRef = useRef(false);
   const autoLoadedConversationRef = useRef(false);
+  const projectTaskIdRef = useRef(initialProjectTaskId || null);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -144,15 +147,15 @@ export function ChatView({
     setError(null);
     try {
       const data = await getConversationMessages(id);
-      const rows = (data.messages ?? (data as any).conversation?.messages ?? []) as any[];
+      const rows = data.messages ?? [];
       const mapped: ChatMessage[] = rows
-        .filter((m) => m && (m.role === "user" || m.role === "assistant"))
+        .filter((m) => m.role === "user" || m.role === "assistant")
         .map((m) => ({
-          id: String(m.id ?? newId()),
+          id: m.id || newId(),
           role: m.role as "user" | "assistant",
           content: String(m.content ?? ""),
           agent: m.agent ?? undefined,
-          model: m.model ?? m.provider ? `${m.provider ?? ""}${m.model ? `/${m.model}` : ""}`.replace(/^\//, "") : undefined,
+          model: [m.provider, m.model].filter(Boolean).join("/") || undefined,
           pending: false,
         }));
       abortRef.current?.abort();
@@ -232,6 +235,8 @@ export function ChatView({
       setSteps([]);
       setRunMeta(null);
       setTaskId(null);
+      const linkedProjectTaskId = projectTaskIdRef.current;
+      projectTaskIdRef.current = null;
 
       const userMessage: ChatMessage = { id: newId(), role: "user", content: text };
       const assistantId = newId();
@@ -249,6 +254,7 @@ export function ChatView({
             conversation_id: conversationId,
             agent: agentSlug,
             model_role: modelRole || null,
+            project_task_id: linkedProjectTaskId,
           },
           (event: ChatEvent) => {
             if (event.type === "conversation") {

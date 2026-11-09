@@ -64,12 +64,45 @@ loaded automatically. Important values:
 | Variable | Default | Notes |
 |---|---|---|
 | `DATABASE_URL` | SQLite `.data/orbito.db` | Postgres for the Docker stack |
+| `POSTGRES_HOST_PORT` | `5433` in Compose | Host port for the optional Docker Postgres container; avoids local Postgres on 5432 |
 | `REDIS_URL` | unset | optional in v0.1 |
 | `OPENAI_API_KEY` etc. | empty | gateway skips unconfigured providers |
 | `OLLAMA_ENABLED` | see `.env.example` / app config | enable local Ollama; verify the task trace |
 | `SCRAPING_ALLOWED_DOMAINS` | empty | comma-separated allowlist |
 
 Provider keys never reach the browser. Changes require an API restart.
+
+### Project Task Manager database
+
+The `/tasks` Kanban board stores project items in `project_work_items`. Agent
+execution runs stay in the existing `tasks`/`task_events` tables and may be
+linked from a project item. Both use the same `DATABASE_URL`; no task is
+seeded/faked.
+
+SQLite works immediately and is easy to inspect with DB Browser for SQLite at
+`apps/api/.data/orbito.db`. PostgreSQL is also supported. Docker Desktop is
+currently optional; to run only the database while keeping API/web native on
+Windows:
+
+```powershell
+docker compose up -d postgres
+```
+
+Compose maps PostgreSQL 17/pgvector to host port **5433** so it can coexist with
+the native PostgreSQL 18 service commonly listening on 5432. Add this to `.env`
+and restart the API to use Compose Postgres:
+
+```env
+DATABASE_URL=postgresql+asyncpg://orbito:orbito@127.0.0.1:5433/orbito
+```
+
+In DBeaver/DB Browser's PostgreSQL connection use host `127.0.0.1`, port `5433`,
+database/user/password `orbito`. These are local development credentials only.
+If you prefer the already-installed native PostgreSQL service on 5432, use its
+configured database/user/password in `DATABASE_URL`; ORBITO does not guess or
+change native PostgreSQL credentials. The current machine's Docker daemon is not
+running, while a native PostgreSQL service is listening on 5432; the app remains
+on its existing SQLite setting until a valid PostgreSQL URL is configured.
 
 ## Repository layout
 

@@ -43,6 +43,7 @@ class OrchestratorRequest:
     history: list[GatewayMessage] = field(default_factory=list)
     workspace_id: str | None = None
     context: str | None = None
+    project_task_id: str | None = None
 
 
 class Orchestrator:
@@ -61,6 +62,18 @@ class Orchestrator:
             model_role=capability,
             user_id=request.user_id,
         )
+        if request.project_task_id and task_id:
+            linked = await repo.attach_execution_to_project_work_item(
+                request.project_task_id, task_id, user_id=request.user_id
+            )
+            if linked:
+                await repo.add_task_event(
+                    task_id,
+                    kind="project_task.linked",
+                    message="Execution linked to project task",
+                    detail=f"Project task {request.project_task_id}",
+                    data={"project_task_id": request.project_task_id},
+                )
 
         step_rows: list[str | None] = []
         for index, step in enumerate(plan):

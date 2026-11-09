@@ -5,7 +5,13 @@ export const metadata = { title: "Chat" };
 export default async function ChatPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; agent?: string; model?: string; conversation?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    agent?: string;
+    model?: string;
+    conversation?: string;
+    project_task?: string;
+  }>;
 }) {
   const params = await searchParams;
   return (
@@ -14,6 +20,7 @@ export default async function ChatPage({
       initialAgent={params.agent ?? "auto"}
       initialModelRole={params.model ?? ""}
       initialConversationId={params.conversation ?? ""}
+      initialProjectTaskId={params.project_task ?? ""}
     />
   );
 }

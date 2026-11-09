@@ -75,6 +75,27 @@ only after verifying it.
 **Done when:** a task trace proves local Ollama generated the response and the
 Windows system view reports real measurements or explicit unavailable values.
 
+### Phase 0.5 — Integrated Project Task Manager ✅
+
+The planning surface is now inside ORBITO. It is a Jira-style project board,
+separate from the agent execution monitor.
+
+- Project work items live in `project_work_items`; agent executions remain in
+  `tasks` / `task_events`.
+- Kanban columns: backlog, to do, in progress, blocked and done; create/edit,
+  search, priority, labels, estimates, due dates and local-calendar scheduling.
+- A next-day plan surfaces tasks scheduled for tomorrow. “Run with ORBITO” opens
+  Chat and links the real execution ID back to that project card.
+- A model answer/completed run does not automatically mark a project item done;
+  the user decides when the work itself is complete.
+- Records use the configured `DATABASE_URL`. SQLite remains zero-setup;
+  PostgreSQL can run locally or through the optional Docker Compose database.
+  No seed/demo work items are inserted.
+
+**Done when:** board CRUD/status changes, daily plan, database persistence and
+Chat execution linking pass API tests. (Implemented; browser and configured
+PostgreSQL acceptance still need verification.)
+
 ### Phase 1 — Safety spine: local identity, approvals and audit (first build)
 
 Do this **before** adding tools that change desktop state.

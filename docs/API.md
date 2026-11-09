@@ -113,12 +113,43 @@ curl -N -X POST localhost:8000/api/v1/chat \
 
 ## Tasks
 
+`/tasks` are **ORBITO execution runs** (one agent/model run, steps, events and
+result). They are not the user-managed Jira-style backlog.
+
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/tasks?limit=25` | Recent tasks with steps |
 | GET | `/tasks/{id}` | One task, plan and result |
 | POST | `/tasks/{id}/cancel` | Mark cancelled |
 | POST | `/tasks/{id}/approve?approved=true` | Record approval on a task |
+
+## Project Task Manager
+
+`/project-tasks` stores planning work items in the configured database. The UI
+shows a Kanban board, unscheduled backlog, day plan and tomorrow plan. Project
+items are separate from execution runs; starting one in Chat records the latest
+execution ID on the project item, but does **not** automatically mark the project
+item done.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/project-tasks/board?target_date=YYYY-MM-DD&q=` | Board items + counts + scheduled-today/tomorrow summary |
+| POST | `/project-tasks` | Create `{title, description?, status?, priority?, scheduled_for?, due_date?, estimate_minutes?, labels?}` |
+| GET | `/project-tasks/{id}` | One project item |
+| PATCH | `/project-tasks/{id}` | Edit fields or move status |
+| DELETE | `/project-tasks/{id}` | Delete the planning item; linked execution logs remain |
+
+Statuses: `backlog`, `todo`, `in_progress`, `blocked`, `done`. Priorities:
+`low`, `normal`, `high`, `urgent`. Dates are `YYYY-MM-DD` in the user's local
+calendar. `/chat` accepts optional `project_task_id`; this is how “Run with
+ORBITO” links a real execution run to a board item.
+
+`DATABASE_URL` controls persistence. SQLite is the no-setup default. For Docker
+PostgreSQL, run `docker compose up -d postgres`, set the API's
+`DATABASE_URL=postgresql+asyncpg://orbito:orbito@127.0.0.1:5433/orbito`, then
+restart the native Windows API. Connect DB Browser/DBeaver to host `127.0.0.1`,
+port `5433`, database/user/password `orbito`. The compose database is local
+development only; change its credentials before any shared deployment.
 
 ## Conversations
 

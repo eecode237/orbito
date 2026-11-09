@@ -22,6 +22,7 @@ from app.db.models import (
     Memory,
     Message,
     ModelUsage,
+    ProjectWorkItem,
     ScrapingJob,
     ScrapingResult,
     Task,
@@ -294,6 +295,24 @@ async def get_task(task_id: str) -> Task | None:
         return None
 
 
+async def get_task_statuses(
+    task_ids: set[str], user_id: str = DEMO_USER_ID
+) -> dict[str, str]:
+    if not task_ids:
+        return {}
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(Task.id, Task.status).where(
+                    Task.id.in_(task_ids), Task.user_id == user_id
+                )
+            )
+            return {task_id: status for task_id, status in result.all()}
+    except Exception as exc:
+        logger.warning("linked task status lookup failed: %s", exc)
+        return {}
+
+
 async def list_tasks(
     user_id: str = DEMO_USER_ID,
     limit: int = 20,
@@ -348,6 +367,200 @@ async def count_tasks(
             return int(result.scalar_one() or 0)
     except Exception:
         return 0
+
+
+async def create_project_work_item(
+    *,
+    title: str,
+    description: str = "",
+    status: str = "backlog",
+    priority: str = "normal",
+    scheduled_for: str | None = None,
+    due_date: str | None = None,
+    estimate_minutes: int | None = None,
+    labels: list[str] | None = None,
+    user_id: str = DEMO_USER_ID,
+) -> ProjectWorkItem | None:
+    try:
+        async with SessionLocal() as session:
+            item = ProjectWorkItem(
+                user_id=user_id,
+                title=title.strip()[:240],
+                description=description.strip(),
+                status=status,
+                priority=priority,
+                scheduled_for=scheduled_for,
+                due_date=due_date,
+                estimate_minutes=estimate_minutes,
+                labels=labels or [],
+            )
+            session.add(item)
+            await session.commit()
+            await session.refresh(item)
+            return item
+    except Exception as exc:
+        logger.warning("project work item create failed: %s", exc)
+        return None
+
+
+async def get_project_work_item(
+    item_id: str, user_id: str = DEMO_USER_ID
+) -> ProjectWorkItem | None:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(ProjectWorkItem).where(
+                    ProjectWorkItem.id == item_id,
+                    ProjectWorkItem.user_id == user_id,
+                )
+            )
+            return result.scalar_one_or_none()
+    except Exception as exc:
+        logger.warning("project work item lookup failed: %s", exc)
+        return None
+
+
+async def list_project_work_items(
+    *,
+    user_id: str = DEMO_USER_ID,
+    query: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> list[ProjectWorkItem]:
+    try:
+        async with SessionLocal() as session:
+            statement = select(ProjectWorkItem).where(ProjectWorkItem.user_id == user_id)
+            if query and query.strip():
+                needle = f"%{query.strip().lower()}%"
+                statement = statement.where(
+                    func.lower(ProjectWorkItem.title).like(needle)
+                    | func.lower(ProjectWorkItem.description).like(needle)
+                    | func.lower(ProjectWorkItem.key).like(needle)
+                )
+            result = await session.execute(
+                statement.order_by(
+                    ProjectWorkItem.scheduled_for.is_(None),
+                    ProjectWorkItem.scheduled_for.asc(),
+                    ProjectWorkItem.updated_at.desc(),
+                )
+                .offset(max(0, offset))
+                .limit(max(1, min(limit, 500)))
+            )
+            return list(result.scalars())
+    except Exception as exc:
+        logger.warning("project work item list failed: %s", exc)
+        return []
+
+
+async def count_project_work_items(
+    *, user_id: str = DEMO_USER_ID, query: str | None = None
+) -> int:
+    try:
+        async with SessionLocal() as session:
+            statement = select(func.count(ProjectWorkItem.id)).where(
+                ProjectWorkItem.user_id == user_id
+            )
+            if query and query.strip():
+                needle = f"%{query.strip().lower()}%"
+                statement = statement.where(
+                    func.lower(ProjectWorkItem.title).like(needle)
+                    | func.lower(ProjectWorkItem.description).like(needle)
+                    | func.lower(ProjectWorkItem.key).like(needle)
+                )
+            result = await session.execute(statement)
+            return int(result.scalar_one() or 0)
+    except Exception as exc:
+        logger.warning("project work item count failed: %s", exc)
+        return 0
+
+
+async def update_project_work_item(
+    item_id: str,
+    *,
+    fields: dict[str, Any],
+    user_id: str = DEMO_USER_ID,
+) -> ProjectWorkItem | None:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(ProjectWorkItem).where(
+                    ProjectWorkItem.id == item_id,
+                    ProjectWorkItem.user_id == user_id,
+                )
+            )
+            item = result.scalar_one_or_none()
+            if not item:
+                return None
+            for key, value in fields.items():
+                if key in {
+                    "title",
+                    "description",
+                    "status",
+                    "priority",
+                    "scheduled_for",
+                    "due_date",
+                    "estimate_minutes",
+                    "labels",
+                }:
+                    setattr(item, key, value)
+            if item.status == "done" and item.completed_at is None:
+                item.completed_at = datetime.now(UTC)
+            elif item.status != "done":
+                item.completed_at = None
+            await session.commit()
+            await session.refresh(item)
+            return item
+    except Exception as exc:
+        logger.warning("project work item update failed: %s", exc)
+        return None
+
+
+async def attach_execution_to_project_work_item(
+    item_id: str,
+    execution_task_id: str,
+    *,
+    user_id: str = DEMO_USER_ID,
+) -> bool:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(ProjectWorkItem).where(
+                    ProjectWorkItem.id == item_id,
+                    ProjectWorkItem.user_id == user_id,
+                )
+            )
+            item = result.scalar_one_or_none()
+            if not item or item.status == "done":
+                return False
+            item.execution_task_id = execution_task_id
+            item.status = "in_progress"
+            await session.commit()
+            return True
+    except Exception as exc:
+        logger.warning("project work item execution link failed: %s", exc)
+        return False
+
+
+async def delete_project_work_item(
+    item_id: str, user_id: str = DEMO_USER_ID
+) -> bool:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(ProjectWorkItem).where(
+                    ProjectWorkItem.id == item_id,
+                    ProjectWorkItem.user_id == user_id,
+                )
+            )
+            item = result.scalar_one_or_none()
+            if not item:
+                return False
+            await session.delete(item)
+            await session.commit()
+            return True
+    except Exception as exc:
+        logger.warning("project work item delete failed: %s", exc)
+        return False
 
 
 # --- task events / monitor --------------------------------------------------

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -13,6 +14,7 @@ class ChatRequest(BaseModel):
     agent: str | None = "auto"
     model_role: str | None = None
     workspace_id: str | None = None
+    project_task_id: str | None = None
     # Optional attached file context from the workspace explorer.
     context: str | None = Field(default=None, max_length=60_000)
     stream: bool = True
@@ -69,3 +71,59 @@ class PullRequest(BaseModel):
     """Request a model download from the local Ollama registry."""
 
     name: str = Field(min_length=1, max_length=128)
+
+
+WorkItemStatus = Literal["backlog", "todo", "in_progress", "blocked", "done"]
+WorkItemPriority = Literal["low", "normal", "high", "urgent"]
+
+
+class ProjectWorkItemCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    description: str = Field(default="", max_length=12_000)
+    status: WorkItemStatus = "backlog"
+    priority: WorkItemPriority = "normal"
+    scheduled_for: date | None = None
+    due_date: date | None = None
+    estimate_minutes: int | None = Field(default=None, ge=0, le=100_000)
+    labels: list[str] = Field(default_factory=list, max_length=12)
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, value: str) -> str:
+        title = value.strip()
+        if not title:
+            raise ValueError("Title cannot be blank.")
+        return title
+
+    @field_validator("labels")
+    @classmethod
+    def _clean_labels(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(label.strip()[:40] for label in value if label.strip()))[:12]
+
+
+class ProjectWorkItemUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=240)
+    description: str | None = Field(default=None, max_length=12_000)
+    status: WorkItemStatus | None = None
+    priority: WorkItemPriority | None = None
+    scheduled_for: date | None = None
+    due_date: date | None = None
+    estimate_minutes: int | None = Field(default=None, ge=0, le=100_000)
+    labels: list[str] | None = Field(default=None, max_length=12)
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        title = value.strip()
+        if not title:
+            raise ValueError("Title cannot be blank.")
+        return title
+
+    @field_validator("labels")
+    @classmethod
+    def _clean_labels(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        return list(dict.fromkeys(label.strip()[:40] for label in value if label.strip()))[:12]

@@ -35,6 +35,16 @@ async def _history(conversation_id: str | None) -> list[GatewayMessage]:
 
 @router.post("/chat")
 async def chat(payload: ChatRequest):
+    if payload.project_task_id:
+        project_task = await repo.get_project_work_item(payload.project_task_id)
+        if not project_task:
+            raise HTTPException(status_code=404, detail="Project task not found")
+        if project_task.status == "done":
+            raise HTTPException(
+                status_code=409,
+                detail="This project task is already marked done. Reopen it before starting another run.",
+            )
+
     conversation_id = await repo.get_or_create_conversation(
         payload.conversation_id,
         title=payload.message[:80],
@@ -60,6 +70,7 @@ async def chat(payload: ChatRequest):
         history=history,
         workspace_id=payload.workspace_id,
         context=payload.context,
+        project_task_id=payload.project_task_id,
     )
 
     if not payload.stream:

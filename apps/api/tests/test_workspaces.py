@@ -57,7 +57,7 @@ def test_overview_tree_and_file(tmp_path, monkeypatch):
             "/api/v1/workspaces/file", params={"root": root, "path": ".env.example"}
         )
         assert example.status_code == 200
-        assert example.json()["content"] == "OPENAI_API_KEY=\n"
+        assert example.json()["content"].replace("\r\n", "\n") == "OPENAI_API_KEY=\n"
 
 
 def test_secrets_and_traversal_are_blocked(tmp_path, monkeypatch):

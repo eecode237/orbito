@@ -333,6 +333,12 @@ class ModelHub:
                     memory[key] = int(parts[0]) * 1024
         except (OSError, ValueError):
             pass
+        if not memory.get("MemTotal"):
+            import psutil
+
+            virtual = psutil.virtual_memory()
+            memory["MemTotal"] = int(virtual.total)
+            memory["MemAvailable"] = int(virtual.available)
 
         cpu_model = platform.processor() or None
         try:

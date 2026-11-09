@@ -73,6 +73,12 @@ def _safe(callable_, default=None):
         return default
 
 
+def _open_fds(proc: psutil.Process) -> int | None:
+    """Open file descriptors are POSIX-only; Windows reports them as unavailable."""
+    reader = getattr(proc, "num_fds", None)
+    return _safe(reader, None) if reader else None
+
+
 def _is_protected(proc: psutil.Process) -> bool:
     if proc.pid <= 1:
         return True
@@ -259,7 +265,7 @@ def process_detail(pid: int) -> dict[str, Any]:
         "memory_vms_bytes": int(memory.vms) if memory else None,
         "memory_percent": round(_safe(proc.memory_percent, 0.0) or 0.0, 2),
         "threads": _safe(proc.num_threads, None),
-        "fds": _safe(proc.num_fds, None),
+        "fds": _open_fds(proc),
         "nice": _safe(proc.nice, None),
         "io": {
             "read_bytes": int(io.read_bytes),

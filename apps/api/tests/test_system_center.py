@@ -7,6 +7,7 @@ rather than faked, so the assertions only pin down the shape.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 
@@ -27,7 +28,8 @@ def test_overview_is_a_real_host_snapshot():
     assert body["memory"]["total_bytes"] > 0
     assert 0 <= body["memory"]["percent"] <= 100
     assert body["disk"]["partitions"]
-    assert body["disk"]["partitions"][0]["mountpoint"] == "/"
+    system_root = "/" if os.name != "nt" else os.path.splitdrive(sys.executable)[0] + os.sep
+    assert system_root in {item["mountpoint"] for item in body["disk"]["partitions"]}
     assert isinstance(body["disk_io"]["read_bytes"], int)
     assert isinstance(body["network"]["interfaces"], list)
     assert isinstance(body["gpu"]["devices"], list)

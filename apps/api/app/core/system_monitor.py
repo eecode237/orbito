@@ -70,7 +70,19 @@ def _memory() -> dict[str, int]:
                 values[key] = int(parts[0]) * 1024
     except (OSError, ValueError):
         pass
-    return values
+    if values:
+        return values
+    # Windows and other hosts without /proc: psutil reports the same quantities.
+    import psutil
+
+    virtual = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+    return {
+        "MemTotal": int(virtual.total),
+        "MemAvailable": int(virtual.available),
+        "SwapTotal": int(swap.total),
+        "SwapFree": int(swap.free),
+    }
 
 
 def _cpu_model() -> str | None:

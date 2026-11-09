@@ -1,17 +1,40 @@
 # ORBITO — Project Breakdown & Gap Analysis
 
-**Date:** 2026-11-07 · **Repo state:** Foundation v0.1 (runnable, tested, CI green)
+**Snapshot date:** 2026-11-07 · **Status:** historical blueprint gap analysis, not the current build priority
 **Machine:** Windows 11 desktop, Ryzen 7 5700X, 32 GB RAM, RX 5700 XT — see
 [HARDWARE_OLLAMA.md](HARDWARE_OLLAMA.md).
 
-This document audits what the repository **actually contains today** and maps it
-against the 15-system ORBITO blueprint. Companion docs:
+This document records the repo's state against the original 15-system blueprint
+as of 2026-11-07. It is retained for historical context. It is **not** the
+current execution order; the single-user Windows Jarvis strategy in
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) is authoritative.
+
+## Current strategy delta (verified 2026-11-08)
+
+- ORBITO is being prioritized as a local-first, single-user Windows assistant;
+  auth, multi-tenancy, billing and remote hosting are deferred unless actual
+  usage requires them.
+- Ollama was reachable from the API and installed models were visible in Model
+  Hub. A real task trace must still be checked to prove each chat used the
+  intended local model (health alone does not prove generation provenance).
+- Model Hub, `/memory`, a local-texture 4K Planet globe, live news headlines and
+  globe point descriptions have since been implemented.
+- Still missing and highest priority: durable enforced approvals, native
+  Windows PC-control tools, schema-based model tool calling, push-to-talk/STT/
+  TTS, and local semantic document retrieval.
+- There are no desktop-control tools in the registry today. The permission
+  module is not a complete execution gate. `/voice` is a shell only.
+- The Windows test/lint baseline is not green everywhere; see the
+  `orbito-verify-and-commit` skill and current test output before claiming CI is
+  green.
+
+Companion docs:
 
 - [FEATURES.md](FEATURES.md) — feature-by-feature status catalog.
 - [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) — current vs. target structure.
-- [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — what to build next, in order.
-- [ROADMAP.md](ROADMAP.md) — the original phase plan (still valid; the
-  implementation plan adapts it to this machine).
+- [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — current Jarvis-first work,
+  in order.
+- [ROADMAP.md](ROADMAP.md) — summary of the current personal-assistant sequence.
 
 ---
 
@@ -97,9 +120,10 @@ Ordered by how much everything else depends on them:
 4. **Embeddings + pgvector retrieval.** The database schema and Compose service
    exist; no ingestion pipeline uses them yet. Blocks Education (citations),
    Knowledge (semantic search) and better memory.
-5. **Local models are not pulled.** Ollama 0.40.15 is installed with **zero
-   models** — the gateway currently falls back to `mock` on this machine. See
-   [HARDWARE_OLLAMA.md](HARDWARE_OLLAMA.md) for the exact pull list.
+5. **Historical snapshot only:** at the 2026-11-07 audit, Ollama had zero
+   models and the gateway fell back to `mock`. This was superseded: on
+   2026-11-08 Ollama was reachable and Model Hub showed installed models. Still
+   verify the provider/model on a real task trace before claiming local chat.
 6. **Windows reality vs. Linux assumptions.** Docs and alert defaults assume a
    Linux laptop (battery, systemd, thermal zones). This machine is a Windows
    desktop: no battery, different thermal access, AMD GPU. System Center must

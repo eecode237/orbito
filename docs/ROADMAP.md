@@ -1,113 +1,64 @@
-# Roadmap
+# ORBITO Roadmap — Personal Jarvis
 
-Philosophy: ship a runnable, honest foundation, then add capability. Each phase
-keeps `make dev` working and adds tests.
+ORBITO's primary goal is a useful **single-user, local-first assistant that can
+safely operate the owner's Windows PC**. This roadmap replaces the earlier
+multi-user/product-platform-first sequence. The detailed, testable backlog and
+acceptance criteria live in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).
 
-## Foundation v0.1 — current
+## Current foundation — present, not the destination
 
-**Goal:** the complete product loop on one machine.
+The repo has a working web/API foundation, Ollama Model Hub, chat and task
+traces, declarative agents, web/filesystem/document tools, basic user-controlled
+memory, system telemetry, news/markets and a Three.js Planet. These are useful
+surfaces, but **PC control, enforced approvals, general model tool calling,
+push-to-talk, speech and semantic document retrieval are not complete**.
 
-| Deliverable | Status |
-|---|---|
-| Monorepo + docs + env template | ✅ |
-| Next.js dashboard with ORBITO design system | ✅ |
-| FastAPI service + versioned API | ✅ |
-| SQLAlchemy schema for the full domain | ✅ |
-| SQLite dev DB, Postgres/pgvector Compose service | ✅ (Compose not yet run in this environment) |
-| Model gateway: 5 providers + offline mock, fallbacks, cost | ✅ |
-| Orchestrator: routing, plan, tools, streaming, persistence | ✅ |
-| Agent registry: core, career, research, study, coding, automation | ✅ |
-| Tools: search, browser, documents, filesystem + SSRF guard | ✅ |
-| Chat with live execution timeline, stop, sources, usage | ✅ |
-| Scraping Studio: jobs, CSS schemas, depth crawl, CSV/JSON export | ✅ |
-| Memory: recall, explicit capture, inspect/delete | ✅ |
-| Activity log + usage/cost view | ✅ |
-| Automated tests (9) + lint/typecheck/build | ✅ |
-| GitHub Actions CI | ✅ |
-| Authentication + per-user data | ⏳ Phase 1 |
-| Redis-backed workers/queues | ⏳ Phase 2 |
-| Docker images verified end-to-end | ⏳ Phase 0.2 |
+The `voice` route is a UI shell. Tool permissions exist, but the durable
+approval/execution loop is not yet an enforcement boundary. Do not tell users
+that ORBITO controls their desktop or can safely execute a proposed action until
+the capability is implemented and verified on Windows.
 
-**Definition of done:** a user can open the dashboard, send a prompt, watch a
-plan execute, read a grounded answer, inspect the task and its cost, and export
-scraped data — with or without provider keys.
+## Jarvis sequence
 
-## Phase 1 — Accounts & ownership
+| Order | Milestone | Exit condition |
+|---|---|---|
+| 0 | Prove local runtime | Real chat task trace confirms Ollama/model, not just provider health |
+| 1 | Safety spine | One-time approve/reject, payload-bound approvals, enforced policy, audit trail, local-only guard and kill switch |
+| 2 | Windows PC tools | Safe read-only and allowlisted app/URL/media actions work natively; explicit opt-in for screen/clipboard |
+| 3 | Model tool calling | Local model selects typed tools; server validates, authorizes, bounds and traces each call |
+| 4 | Reliable control/workflows | Approved writes/UI actions, undo where possible, durable queue, opt-in schedules |
+| 5 | Push-to-talk | Local STT/TTS, visible recording, editable transcript, interrupt, same permissions as text |
+| 6 | Memory and RAG | Local embeddings, user-selected files, inspectable citations and deletion/reindex |
+| 7 | Proactive assistance | Briefings/reminders/workflows only with source freshness, user controls, approvals and pause-all |
 
-- Better Auth (or equivalent) sessions; login/logout/registration.
-- Replace `DEMO_USER_ID` with the session user everywhere.
-- Workspace scoping middleware; PostgreSQL RLS policies.
-- Per-user settings; encrypted provider credentials.
-- Onboarding: connect a provider, pick default models.
+See `IMPLEMENTATION_PLAN.md` for checklists, Windows constraints and security
+requirements. No phase may claim success from a mock, a prompt instruction or a
+UI animation alone.
 
-**Done:** two users cannot see each other’s conversations, files or tasks.
+## Secondary capabilities
 
-## Phase 2 — Deeper brain
+News, markets, scraping, jobs, education, Planet/globe, video, multi-agent
+planning and the broader System Center remain in the product. Advance them when
+they support the Jarvis loop or a clear user need; they must not delay the
+approval gate, desktop tools, tool calling or push-to-talk.
 
-- Redis + Celery worker for long tasks and scheduled runs.
-- WebSocket/Redis pub-sub task events (replace polling).
-- Gateway budgets, retries with backoff, per-request token caps.
-- Embeddings endpoint + document ingestion into pgvector.
-- Vision input (images) through the gateway.
-- Model comparison and cost guardrails in Settings.
+## Deferred by design
 
-**Done:** a task survives an API restart and resumes/records its final state.
+- Multi-user auth, registration, billing and tenant-specific RLS.
+- Cloud deployment and remote PC control.
+- LangGraph migration, microservices, LiveKit-first voice and broad OTel work.
+- Always-on wake word until push-to-talk is reliable, opt-in and privacy-tested.
 
-## Phase 3 — Agent platform
+These are not necessarily permanent non-goals. Revisit them when actual usage
+requires them. The security invariants in `SECURITY.md` are not deferrable.
 
-- LangGraph `StateGraph` + checkpointing (same contracts as today’s runner).
-- Durable approval queue with audit records.
-- User-defined agents: instructions, tools, limits, knowledge sources.
-- Workspace memory + retrieval with citations.
-- Multi-agent handoff with hard step/budget/deadline limits.
+## Always true
 
-**Done:** a task pauses for approval, survives reload, and resumes exactly once.
-
-## Phase 4 — Research & scraping at scale
-
-- Playwright rendering for JS-heavy sites.
-- Sitemap discovery, scheduling, incremental crawls.
-- Dedicated scraping worker + concurrency limits per domain.
-- Extraction validation (required fields, types) and dedupe.
-- Research reports with source tables and exports.
-
-**Done:** 1,000-page job with progress, retries and clean export.
-
-## Phase 5 — Career & Study
-
-- CV upload/parse → structured profile.
-- Job search adapters, match scoring, tailored CV/cover letter.
-- Application tracker with approval-gated submission.
-- PDF ingestion → summaries, quizzes, flashcards, study plans.
-- Spaced-repetition review loop.
-
-**Done:** a user gets a scored shortlist and a tailored, reviewable application.
-
-## Phase 6 — Voice & video
-
-- LiveKit agent worker; STT/TTS provider abstraction.
-- Barge-in, turn detection, multilingual voices.
-- Video upload → FFmpeg audio → transcript → frame analysis → Q&A.
-- Image/video generation through the gateway.
-- Media storage in R2/S3 with signed URLs.
-
-**Done:** a spoken conversation triggers a tool and returns speech; a video
-answers questions with timestamps.
-
-## Phase 7 — Production
-
-- Billing, quotas, usage dashboards and alerts.
-- Rate limiting, abuse prevention, audit review UI.
-- Sandboxed code execution service.
-- OpenTelemetry traces across API/worker/provider.
-- Deployment pipelines, staging, backups, restore drills.
-- Security review and penetration test.
-
-**Done:** staging → production promotion with rollback and on-call runbook.
-
-## Explicit non-goals
-
-- Bypassing logins, CAPTCHAs, paywalls or access controls.
-- Running model-generated shell on the host.
-- Letting a prompt be the security boundary.
-- Microservices for their own sake.
+- No arbitrary model-generated shell or code on the host.
+- No sensitive action executes because a prompt says it is safe.
+- PC control is local-only by default and runs in the interactive Windows user
+  session, not in Docker/WSL.
+- Every action has a real result, a visible status and a trace; errors remain
+  errors, not fabricated success.
+- One logical milestone per commit; push coherent commits when the remote is
+  available.

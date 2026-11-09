@@ -5,6 +5,9 @@
 - Node.js 20+ and pnpm 9+ (`corepack enable`)
 - Python 3.12+
 - Docker (optional, for PostgreSQL/Redis/MinIO)
+- Ollama (recommended for the local Jarvis path; cloud credentials are optional)
+- Windows 11 for native PC-control development/acceptance (desktop-control tools
+  are not implemented yet)
 
 ## First run
 
@@ -15,8 +18,35 @@ make install      # pnpm install + Python venv + pip requirements
 make dev          # API :8000 + web :3000
 ```
 
-Open http://localhost:3000. No API keys are required — ORBITO uses the offline
-mock provider until you add one.
+Open http://localhost:3000. For the personal local-first path, start Ollama and
+pull a configured model. Without a reachable/configured provider, the mock may
+be selected as a fallback; inspect the task's resolved provider/model instead
+of assuming local inference worked.
+
+### Windows local Jarvis development
+
+Run the API and web app as native processes in the logged-in Windows session.
+This is required for future desktop actions. Do not run the desktop executor in
+Docker or WSL. Docker Desktop/WSL2 may still be used for optional Postgres,
+Redis or MinIO.
+
+```powershell
+# Terminal 1: API (from repo root)
+cd apps\api
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# Terminal 2: web app (from repo root)
+pnpm --filter @orbito/web dev
+
+# Terminal 3: Ollama (if not already running as a service)
+ollama serve
+ollama list
+```
+
+Open http://localhost:3000. Keep the API on `127.0.0.1`; never expose future
+PC-control endpoints to LAN/tunnels without a separate security design. Restart
+the API after backend changes unless it was deliberately started with a working
+reload mode.
 
 ```bash
 make api          # backend only
@@ -36,7 +66,7 @@ loaded automatically. Important values:
 | `DATABASE_URL` | SQLite `.data/orbito.db` | Postgres for the Docker stack |
 | `REDIS_URL` | unset | optional in v0.1 |
 | `OPENAI_API_KEY` etc. | empty | gateway skips unconfigured providers |
-| `OLLAMA_ENABLED` | `false` | opt in to local models |
+| `OLLAMA_ENABLED` | see `.env.example` / app config | enable local Ollama; verify the task trace |
 | `SCRAPING_ALLOWED_DOMAINS` | empty | comma-separated allowlist |
 
 Provider keys never reach the browser. Changes require an API restart.
@@ -85,6 +115,11 @@ Add a subclass in `app/agents/`, register it, mirror it in
 Implement `Tool` in `app/tools/`, set `permission`, register it. Validate all
 paths/URLs inside the tool.
 
+For any PC-control tool, first read `docs/IMPLEMENTATION_PLAN.md`,
+`docs/SECURITY.md` and `.opencode/skills/orbito-pc-control/SKILL.md`. Current
+permission declarations are not a substitute for the not-yet-complete approval
+queue. Never add model-generated shell or an unbounded host action.
+
 ### Add an API route
 
 Add a module under `app/api/v1/`, include it in `router.py`, type requests in
@@ -115,8 +150,11 @@ is wrong. Check `curl localhost:8000/api/v1/health`; CORS defaults to
 `TAVILY_API_KEY` or `SERPER_API_KEY` for reliable search. The failure is shown
 honestly in the timeline.
 
-**No live model** — expected without keys. Add one, restart the API, confirm
-Settings → Providers shows `connected`.
+**No live local model** — check Ollama is running, `ollama list` shows the
+configured role's model, `OLLAMA_ENABLED` and role overrides in `.env`, then
+restart the API. Confirm the actual task trace shows `provider=ollama`; a healthy
+API or Model Hub alone does not prove chat used Ollama. If a cloud provider or
+mock was selected, the task trace must say so.
 
 **Docker permission denied** — add your user to the `docker` group or run the
 infrastructure with appropriate privileges. The app does not require Docker.

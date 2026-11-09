@@ -5,10 +5,11 @@ turning into a pile of provider-specific hacks.
 
 ## Read first
 
-1. `docs/ARCHITECTURE.md` — boundaries and data flow.
-2. `docs/MODELS.md` — how model access works.
-3. `docs/AGENTS.md` — agent contracts.
-4. `docs/SECURITY.md` — what requires approval.
+1. `docs/IMPLEMENTATION_PLAN.md` — current single-user Jarvis goal and build order.
+2. `docs/ARCHITECTURE.md` — boundaries and data flow.
+3. `docs/MODELS.md` — how model access works.
+4. `docs/AGENTS.md` — agent/tool contracts and current limitations.
+5. `docs/SECURITY.md` — local PC-control trust boundary and approval policy.
 
 ## Hard rules
 
@@ -24,6 +25,8 @@ turning into a pile of provider-specific hacks.
    for frontend payloads (`apps/web/src/lib/types.ts`).
 5. **Sensitive actions never auto-run.** Shell, email, application submission,
    file deletion, and account access require an approval gate.
+   Desktop-control actions must be enforced at the final server-side execution
+   boundary; a prompt or agent declaration is not an approval mechanism.
 6. **Sandbox generated code.** No arbitrary model-generated shell on the host.
 7. **One integration per provider.** Add a new model provider in exactly one
    file under `model_gateway/providers/` and register it once.
@@ -34,6 +37,14 @@ turning into a pile of provider-specific hacks.
 10. **Update docs when architecture changes** — same commit, not later.
 11. **Keep `make dev` working.** The repo must boot after every phase.
 12. **No secrets in Git, logs, prompts, or frontend bundles.**
+13. **Personal-first product strategy.** Optimize for one local Windows user;
+    do not prioritize multi-user auth, billing or cloud hosting before the
+    safe PC-control → typed tool-calling → push-to-talk loop.
+14. **PC control is native and local-only by default.** Run in the interactive
+    Windows session, bind loopback, fail closed off Windows/off-loopback, and
+    keep Docker/WSL out of the desktop executor.
+15. **No silent sensing.** Screenshots, clipboard and microphone are explicit,
+    opt-in actions. Do not retain their contents by default.
 
 ## Conventions
 

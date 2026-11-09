@@ -1,10 +1,33 @@
 # ORBITO — Feature Catalog & Status
 
 Living document. Every feature is marked against the **actual repo state**
-(verified 2026-11-07), not intentions. Update in the same commit as the feature.
+(verified 2026-11-08), not intentions. Update in the same commit as the feature.
 
 Status: ✅ shipped · 🟡 foundation exists, incomplete · ⬜ not started ·
-🔒 requires approval-gate/security work first
+🔒 requires approval-gate/security work first · 🚫 prohibited by design
+
+---
+
+## Product priority: Personal Jarvis
+
+The target is one local-first assistant on the owner's Windows PC. The central
+loop is text/voice input → understanding → typed tool proposal → server-side
+permission/approval → native PC action → truthful report. Read
+[`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the build sequence.
+
+| Capability | Current status | Next gate |
+|---|---|---|
+| Local Ollama Model Hub / chat | ✅ | Verify Ollama provider/model in task trace for each runtime setup; health alone is insufficient |
+| Windows PC control | ⬜ | No native PC tools yet; implement approval spine before state-changing actions |
+| Enforced approvals | ⬜ | Policy metadata exists, but durable queue/final execution gate is incomplete |
+| General model tool calling | ⬜ | Current routing is keyword + agent gather; typed proposal loop is not implemented |
+| Push-to-talk / local STT/TTS | ⬜ | `/voice` is a UI shell only |
+| User-controlled memory | 🟡 | CRUD and prompt recall exist; embeddings/RAG do not |
+| Proactive workflows | ⬜ | No durable scheduler/worker or approval-aware scheduler |
+
+Screenshots, clipboard and microphone are sensitive opt-in capabilities. No
+arbitrary model-generated shell is allowed on the host. PC control remains
+loopback-only and native on Windows by default.
 
 ---
 
@@ -75,11 +98,11 @@ Status: ✅ shipped · 🟡 foundation exists, incomplete · ⬜ not started ·
 
 | Feature | Status | Notes |
 |---|---|---|
-| `intel` API + news page shell | 🟡 | `api/v1/intel.py`, `app/news` |
+| `intel` API + news page | 🟡 | RSS feeds and source health; ingestion is still request/cache based, not a durable pipeline |
 | RSS/feed ingestion worker | ⬜ | Phase 2 worker + scheduler; respect robots.txt/rate limits |
 | Dedupe, entity + category extraction, AI summaries | ⬜ | Use `fast`/`reasoning` local roles |
-| Geo-extraction with confirmed vs. inferred locations | ⬜ | Never invent coordinates (blueprint rule) |
-| 3D Planet (Three.js/R3F globe with real events) | ⬜ | Only after the pipeline produces real geodata; RX 5700 XT handles WebGL fine |
+| Geo-extraction with confirmed vs. inferred locations | 🟡 | Headline gazetteer matches and approximate publisher-region fallback are labeled; not true event geocoding |
+| 3D Planet (Three.js/R3F globe with news) | 🟡 | Local 4K Earth textures, live RSS headlines, approximate source/headline markers and Wikipedia point descriptions; no global event pipeline |
 | Topics, watchlists, daily briefing | ⬜ | After ingestion |
 
 ## 07 · Jobs Intelligence (Career)
@@ -108,9 +131,9 @@ Status: ✅ shipped · 🟡 foundation exists, incomplete · ⬜ not started ·
 
 | Feature | Status | Notes |
 |---|---|---|
-| Recall / explicit capture ("remember …") / inspect / delete | ✅ | `core/memory/store.py` + Settings → Memory |
+| Recall / explicit capture ("remember …") / inspect / delete | ✅ | `core/memory/store.py` + `/memory`; bounded memories are injected into prompts |
 | Last-14-message conversation context | ✅ | |
-| Workspace-scoped memory | ⬜ | Phase 3 |
+| Workspace-scoped memory | 🟡 | Scope/workspace fields and workspace-filtered recall exist; confirm association through the UI/API |
 | Semantic (vector) retrieval with citations | ⬜ | Phase 2/3 |
 | 4-type memory architecture (working/episodic/semantic/procedural) | ⬜ | Design after vector retrieval lands |
 | Memory access controls per agent | ⬜🔒 | Phase 3 |
@@ -169,8 +192,8 @@ Status: ✅ shipped · 🟡 foundation exists, incomplete · ⬜ not started ·
 |---|---|---|
 | Tool permission levels (auto/approval/restricted) | ✅ | Declared in registry |
 | Permission policy module | 🟡 | `core/permissions/policy.py` scaffolding |
-| Auth (sessions, login, per-user data) | ⬜🔒 | **Phase 1 — top priority**; replaces `DEMO_USER_ID` |
-| Durable approval queue + audit records | ⬜🔒 | Phase 1→3; UI in Command Center + Security page |
+| Auth (sessions, login, per-user data) | ⬜🔒 | Deferred for single-user local-first target; required before remote/multi-user exposure |
+| Durable approval queue + enforced execution + audit | ⬜🔒 | First safety phase before PC state-changing tools; current policy flags alone do not enforce it |
 | Encrypted credential storage + redaction | ⬜🔒 | Phase 1 |
 | Audit log UI | ⬜ | After audit records exist |
 | Prompt-injection defenses (untrusted content tagging) | 🟡 | Tool output truncated/marked; formalize in prompt builder |
@@ -192,3 +215,15 @@ Status: ✅ shipped · 🟡 foundation exists, incomplete · ⬜ not started ·
 | Real-data rules (no fabricated metrics anywhere) | ✅ policy | Enforced in review; add data-health indicator |
 | Windows dev ergonomics (make on Windows, venv, Docker Desktop) | 🟡 | Document in DEVELOPMENT.md; WSL2 optional |
 | CI (lint, typecheck, tests, build) | ✅ | GitHub Actions |
+
+## PC Control (planned; no desktop tools currently registered)
+
+| Feature | Status | Notes |
+|---|---|---|
+| Read Windows system status | 🟡 | Existing System Center is partial; Windows-specific gaps remain |
+| Search PC files | ⬜ | Bounded to explicitly configured roots; must exclude secrets and prevent reparse-point escapes |
+| Launch allowlisted apps / open validated URLs | ⬜ | Named app IDs only, no arbitrary executable paths |
+| Volume and media controls | ⬜ | Windows adapter and bounded actions |
+| Screenshot / clipboard | ⬜ | Opt-in, explicit request, local-only and no retention by default |
+| Write/move/delete, close app, keyboard/mouse | ⬜🔒 | Blocked until one-time payload-bound approval is enforced |
+| Arbitrary host shell | 🚫 | Prohibited; never run model-generated shell/PowerShell/CMD/Python |

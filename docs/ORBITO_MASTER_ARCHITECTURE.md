@@ -1,10 +1,17 @@
 # ORBITO Master Architecture
 
-This document defines the build-level architecture for ORBITO as a personal AI operating system.
+This document defines the build-level architecture for ORBITO as a **single-user,
+local-first personal AI operating system**. Its first-class goal is a safe
+Windows desktop assistant. See `IMPLEMENTATION_PLAN.md` for the authoritative
+sequencing and acceptance criteria.
 
 ## Product principle
 
 ORBITO should be a live AI operating system, not a static dashboard or isolated chatbot. The UI should reflect real system state, not synthetic activity.
+
+The user-facing loop is: **listen → understand → propose → authorize → act →
+report**. The current text chat and task trace are the foundation. PC control,
+enforced approvals, general model tool calling and voice are still planned work.
 
 ## Core layers
 
@@ -108,6 +115,13 @@ Permissions, approval flow, secret handling, audit log, and system boundaries.
 - Model gateway owns provider access.
 - Database owns persistence.
 - UI reflects system state rather than manufacturing fake activity.
+- Desktop control runs natively in the interactive Windows session, on loopback
+  by default. Docker/WSL is not the desktop executor.
+- The model may propose a typed registry call; server policy and a final
+  execution gate decide whether it runs. No prompt grants a permission.
+- Arbitrary model-generated shell on the host is prohibited.
+- Clipboard, screen and microphone are explicit opt-in capabilities with
+  minimization and no retention by default.
 
 ## Execution model
 
@@ -133,15 +147,17 @@ Every command center widget must be backed by real data sources:
 
 ## Build order
 
-1. Foundation and repo conventions
-2. Model gateway
-3. Agent execution and task lifecycle
-4. System health and observability
-5. Command center dashboard
-6. Jobs and news discovery
-7. Knowledge and education
-8. Automation and media workflows
-9. Security hardening and production readiness
+1. Verify real local Ollama inference end-to-end
+2. Enforced one-time approval, audit trail, loopback guard and kill switch
+3. Native Windows read-only/allowlisted PC tools
+4. Typed model tool-calling loop with strict bounds
+5. Approved PC state changes and durable opt-in workflows
+6. Push-to-talk local STT/TTS; wake word later
+7. User-controlled memory and local retrieval/citations
+8. Proactive briefings and secondary intelligence modules
+
+Multi-user authentication, billing, RLS and remote PC control are deferred until
+real usage calls for them. Their deferral does not relax local security.
 
 ## Design principle
 

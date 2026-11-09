@@ -45,10 +45,11 @@ ollama serve
 ollama pull qwen3.5:4b
 ```
 
-`qwen3.5:4b` is the recommended default for a 32 GB laptop without a discrete
-GPU: it supports tools and vision, and stays responsive on CPU. Use
-**Settings → Model Hub** to see hardware, download or delete models, and check
-what is currently loaded.
+`qwen3.5:4b` is the configured fast default for this Windows desktop. Benchmark
+latency and resource use on the actual machine before changing roles. Use
+**Model Hub** to see hardware, download/delete models, and check what is loaded.
+Do not infer that a model/provider supports structured tool calling merely from
+its name or marketing: verify the exact Ollama version/model with a real test.
 
 ```env
 OLLAMA_ENABLED=true
@@ -116,6 +117,18 @@ Events: `start` → `delta*` → `done`, or `error`.
 | `mistral` | OpenAI-compatible | SSE | shares the OpenAI adapter |
 | `ollama` | `/api/chat` | NDJSON | default local provider |
 | `mock` | in-process | simulated | agent-aware deterministic answer |
+
+## Structured tool calls (planned)
+
+The current model gateway streams text and does not expose a general
+schema-based tool-call loop to the orchestrator. Agent routing is keyword-based
+and an agent may call its existing `gather()` method once. This is not the same
+as a model choosing a tool. The Jarvis roadmap will add typed tool definitions
+and tool-call events behind this gateway, validate proposals in the
+orchestrator/tool registry, enforce approvals at execution and cap calls/rounds.
+Provider-specific serialization stays in the provider adapter. If a local model
+does not support the required format, the app must fail safely or use safe
+deterministic routing; it must never parse model text into shell.
 
 ## Model Hub
 

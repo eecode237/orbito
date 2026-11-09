@@ -215,3 +215,30 @@ class KillSwitchUpdate(BaseModel):
 
 class PcControlUpdate(BaseModel):
     enabled: bool
+
+
+ApplicationStatus = Literal["saved", "applied", "interview", "offer", "rejected", "withdrawn"]
+
+
+class JobApplicationCreate(BaseModel):
+    company: str = Field(min_length=1, max_length=200)
+    role: str = Field(min_length=1, max_length=200)
+    url: str | None = Field(default=None, max_length=1000)
+    status: ApplicationStatus = "saved"
+    match_score: float | None = Field(default=None, ge=0, le=100)
+    notes: str | None = Field(default=None, max_length=8000)
+
+
+class JobApplicationUpdate(BaseModel):
+    company: str | None = Field(default=None, min_length=1, max_length=200)
+    role: str | None = Field(default=None, min_length=1, max_length=200)
+    url: str | None = Field(default=None, max_length=1000)
+    status: ApplicationStatus | None = None
+    match_score: float | None = Field(default=None, ge=0, le=100)
+    notes: str | None = Field(default=None, max_length=8000)
+
+
+class StudyCardCreate(BaseModel):
+    deck: str = Field(default="General", max_length=80)
+    front: str = Field(min_length=1, max_length=2000)
+    back: str = Field(min_length=1, max_length=4000)

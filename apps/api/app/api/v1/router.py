@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    academy,
     catalog,
     chat,
     conversations,
@@ -10,6 +11,7 @@ from app.api.v1 import (
     files,
     health,
     intel,
+    jobs,
     memory,
     model_hub,
     notifications,
@@ -34,6 +36,8 @@ api_router.include_router(project_tasks.router)
 api_router.include_router(workflows.router)
 api_router.include_router(safety.router)
 api_router.include_router(notifications.router)
+api_router.include_router(jobs.router)
+api_router.include_router(academy.router)
 api_router.include_router(conversations.router)
 api_router.include_router(memory.router)
 api_router.include_router(scraping.router)

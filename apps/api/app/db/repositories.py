@@ -29,6 +29,7 @@ from app.db.models import (
     RuntimeSetting,
     ScrapingJob,
     ScrapingResult,
+    StudyCard,
     Task,
     TaskEvent,
     TaskStep,
@@ -1660,3 +1661,150 @@ async def mark_notifications_read(
     except Exception as exc:
         logger.warning("notification update failed: %s", exc)
         return 0
+
+
+# --- jobs: application tracker ----------------------------------------------
+
+
+async def create_application(
+    *,
+    company: str,
+    role: str,
+    url: str | None = None,
+    status: str = "saved",
+    match_score: float | None = None,
+    notes: str | None = None,
+    user_id: str = DEMO_USER_ID,
+) -> JobApplication | None:
+    try:
+        async with SessionLocal() as session:
+            row = JobApplication(
+                user_id=user_id,
+                company=company.strip()[:200],
+                role=role.strip()[:200],
+                url=url,
+                status=status,
+                match_score=match_score,
+                notes=notes,
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            return row
+    except Exception as exc:
+        logger.warning("application create failed: %s", exc)
+        return None
+
+
+async def update_application(
+    application_id: str, *, fields: dict[str, Any], user_id: str = DEMO_USER_ID
+) -> JobApplication | None:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(JobApplication).where(
+                    JobApplication.id == application_id, JobApplication.user_id == user_id
+                )
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                return None
+            for key, value in fields.items():
+                if key in {"company", "role", "url", "status", "match_score", "notes", "applied_at"}:
+                    setattr(row, key, value)
+            await session.commit()
+            await session.refresh(row)
+            return row
+    except Exception as exc:
+        logger.warning("application update failed: %s", exc)
+        return None
+
+
+async def delete_application(application_id: str, user_id: str = DEMO_USER_ID) -> bool:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(JobApplication).where(
+                    JobApplication.id == application_id, JobApplication.user_id == user_id
+                )
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                return False
+            await session.delete(row)
+            await session.commit()
+            return True
+    except Exception as exc:
+        logger.warning("application delete failed: %s", exc)
+        return False
+
+
+# --- academy: flashcards ----------------------------------------------------
+
+
+async def create_study_card(
+    *, deck: str, front: str, back: str, user_id: str = DEMO_USER_ID
+) -> StudyCard | None:
+    try:
+        async with SessionLocal() as session:
+            row = StudyCard(user_id=user_id, deck=deck.strip()[:80] or "General", front=front, back=back)
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            return row
+    except Exception as exc:
+        logger.warning("study card create failed: %s", exc)
+        return None
+
+
+async def list_study_cards(
+    *, user_id: str = DEMO_USER_ID, deck: str | None = None, limit: int = 300
+) -> list[StudyCard]:
+    try:
+        async with SessionLocal() as session:
+            statement = select(StudyCard).where(StudyCard.user_id == user_id)
+            if deck:
+                statement = statement.where(StudyCard.deck == deck)
+            result = await session.execute(
+                statement.order_by(StudyCard.created_at.desc()).limit(max(1, min(limit, 1000)))
+            )
+            return list(result.scalars())
+    except Exception as exc:
+        logger.warning("study card list failed: %s", exc)
+        return []
+
+
+async def record_card_review(card_id: str, user_id: str = DEMO_USER_ID) -> StudyCard | None:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(StudyCard).where(StudyCard.id == card_id, StudyCard.user_id == user_id)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                return None
+            row.review_count = int(row.review_count or 0) + 1
+            row.last_reviewed_at = datetime.now(UTC)
+            await session.commit()
+            await session.refresh(row)
+            return row
+    except Exception as exc:
+        logger.warning("study card review failed: %s", exc)
+        return None
+
+
+async def delete_study_card(card_id: str, user_id: str = DEMO_USER_ID) -> bool:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(StudyCard).where(StudyCard.id == card_id, StudyCard.user_id == user_id)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                return False
+            await session.delete(row)
+            await session.commit()
+            return True
+    except Exception as exc:
+        logger.warning("study card delete failed: %s", exc)
+        return False

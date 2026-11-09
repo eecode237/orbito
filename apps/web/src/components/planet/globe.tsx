@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
 import * as THREE from "three";
+
+import { latLonToVec3, subsolarPoint } from "@/lib/planet/geo";
 
 export type GlobeMarker = {
   id: string;
@@ -16,105 +18,303 @@ export type GlobeMarker = {
   pulse?: boolean;
 };
 
-function latLonToVec3(lat: number, lon: number, radius: number): THREE.Vector3 {
-  const phi = THREE.MathUtils.degToRad(90 - lat);
-  const theta = THREE.MathUtils.degToRad(lon + 180);
-  const x = -(radius * Math.sin(phi) * Math.cos(theta));
-  const z = radius * Math.sin(phi) * Math.sin(theta);
-  const y = radius * Math.cos(phi);
-  return new THREE.Vector3(x, y, z);
-}
+export type PlanetLayers = {
+  nightLights: boolean;
+  clouds: boolean;
+  relief: boolean;
+  oceanGlint: boolean;
+  atmosphere: boolean;
+  liveSun: boolean;
+  autoRotate: boolean;
+};
 
-const EARTH_TEXTURES = [
-  "https://unpkg.com/three-globe@2.31.1/example/img/earth-blue-marble.jpg",
-  "https://unpkg.com/three-globe@2.31.1/example/img/earth-day.jpg",
-];
+export type TextureStatus = "loading" | "ready" | "error";
 
-function EarthMesh({ markers }: { markers: GlobeMarker[] }) {
-  const group = useRef<THREE.Group>(null);
-  const [mapTex, setMapTex] = useState<THREE.Texture | null>(null);
-  const [bumpTex, setBumpTex] = useState<THREE.Texture | null>(null);
+export type SunPosition = { lat: number; lon: number };
+
+const RADIUS = 2;
+const RELIEF_SCALE = 0.025;
+const FIXED_SUN: SunPosition = { lat: 20, lon: -30 };
+
+/** Equirectangular 4K day map plus supporting layers, all served locally. */
+const TEXTURE_URLS = {
+  day: "/planet/earth-blue-marble.jpg",
+  night: "/planet/earth-night.jpg",
+  relief: "/planet/earth-topology.png",
+  water: "/planet/earth-water.png",
+  clouds: "/planet/earth-clouds-1024.png",
+} as const;
+
+type TextureKey = keyof typeof TEXTURE_URLS;
+type EarthTextures = Record<TextureKey, THREE.Texture>;
+
+const SRGB_KEYS: TextureKey[] = ["day", "night", "clouds"];
+
+function useEarthTextures(onStatus: (status: TextureStatus) => void) {
+  const { gl } = useThree();
+  const [textures, setTextures] = useState<EarthTextures | null>(null);
 
   useEffect(() => {
     let alive = true;
     const loader = new THREE.TextureLoader();
-    loader.crossOrigin = "anonymous";
-    const loadOne = (urls: string[], onOk: (t: THREE.Texture) => void) => {
-      let i = 0;
-      const tryNext = () => {
-        if (!alive || i >= urls.length) return;
-        loader.load(
-          urls[i++],
-          (t) => { if (alive) { t.colorSpace = THREE.SRGBColorSpace; onOk(t); } },
-          undefined,
-          () => tryNext(),
-        );
-      };
-      tryNext();
-    };
-    loadOne(EARTH_TEXTURES, setMapTex);
-    loadOne(["https://unpkg.com/three-globe@2.31.1/example/img/earth-topology.png"], setBumpTex);
-    return () => { alive = false; };
-  }, []);
+    const anisotropy = gl.capabilities.getMaxAnisotropy();
+    const keys = Object.keys(TEXTURE_URLS) as TextureKey[];
 
-  useFrame((_, delta) => {
-    if (group.current) group.current.rotation.y += delta * 0.06;
+    Promise.all(
+      keys.map(async (key) => {
+        const texture = await loader.loadAsync(TEXTURE_URLS[key]);
+        texture.colorSpace = SRGB_KEYS.includes(key) ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+        texture.anisotropy = anisotropy;
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        texture.generateMipmaps = true;
+        return [key, texture] as const;
+      }),
+    )
+      .then((entries) => {
+        const loaded = Object.fromEntries(entries) as EarthTextures;
+        if (!alive) {
+          Object.values(loaded).forEach((texture) => texture.dispose());
+          return;
+        }
+        setTextures(loaded);
+        onStatus("ready");
+      })
+      .catch(() => {
+        if (alive) onStatus("error");
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [gl, onStatus]);
+
+  useEffect(() => {
+    return () => {
+      if (textures) Object.values(textures).forEach((texture) => texture.dispose());
+    };
+  }, [textures]);
+
+  return textures;
+}
+
+const EARTH_VERTEX = /* glsl */ `
+  uniform sampler2D uRelief;
+  uniform float uReliefScale;
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+
+  void main() {
+    vUv = uv;
+    float height = texture2D(uRelief, uv).r;
+    vec3 displaced = position + normal * (height * uReliefScale);
+    vNormal = normalize(normal);
+    vPosition = displaced;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+  }
+`;
+
+const EARTH_FRAGMENT = /* glsl */ `
+  uniform sampler2D uDay;
+  uniform sampler2D uNight;
+  uniform sampler2D uWater;
+  uniform vec3 uSun;
+  uniform float uNightLights;
+  uniform float uOceanGlint;
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+
+  void main() {
+    vec3 n = normalize(vNormal);
+    vec3 sun = normalize(uSun);
+    float ndl = dot(n, sun);
+
+    vec3 color = texture2D(uDay, vUv).rgb * (0.06 + 0.94 * max(ndl, 0.0));
+
+    vec3 viewDir = normalize(cameraPosition - vPosition);
+    vec3 halfVec = normalize(sun + viewDir);
+    float water = texture2D(uWater, vUv).r;
+    float glint = pow(max(dot(n, halfVec), 0.0), 80.0) * water * uOceanGlint;
+    color += vec3(0.55, 0.7, 0.9) * glint * max(ndl, 0.0);
+
+    float nightSide = 1.0 - smoothstep(-0.12, 0.05, ndl);
+    color += texture2D(uNight, vUv).rgb * 1.35 * uNightLights * nightSide;
+
+    gl_FragColor = vec4(color, 1.0);
+    #include <colorspace_fragment>
+  }
+`;
+
+const ATMOSPHERE_VERTEX = /* glsl */ `
+  varying vec3 vNormal;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const ATMOSPHERE_FRAGMENT = /* glsl */ `
+  varying vec3 vNormal;
+  void main() {
+    float intensity = pow(0.72 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 4.0);
+    gl_FragColor = vec4(0.36, 0.65, 1.0, 1.0) * intensity;
+  }
+`;
+
+function EarthSurface({
+  textures,
+  layers,
+  onSun,
+  sunLight,
+}: {
+  textures: EarthTextures;
+  layers: PlanetLayers;
+  onSun?: (sun: SunPosition) => void;
+  sunLight: RefObject<THREE.DirectionalLight | null>;
+}) {
+  const sunVector = useMemo(() => new THREE.Vector3(1, 0, 0), []);
+  const lastEmit = useRef(0);
+
+  const { nightLights, oceanGlint, relief } = layers;
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        vertexShader: EARTH_VERTEX,
+        fragmentShader: EARTH_FRAGMENT,
+        uniforms: {
+          uDay: { value: textures.day },
+          uNight: { value: textures.night },
+          uRelief: { value: textures.relief },
+          uWater: { value: textures.water },
+          uSun: { value: sunVector },
+          uNightLights: { value: nightLights ? 1 : 0 },
+          uOceanGlint: { value: oceanGlint ? 0.2 : 0 },
+          uReliefScale: { value: relief ? RELIEF_SCALE : 0 },
+        },
+      }),
+    [textures, sunVector, nightLights, oceanGlint, relief],
+  );
+
+  useEffect(() => () => material.dispose(), [material]);
+
+  useFrame(() => {
+    const sun = layers.liveSun ? subsolarPoint(new Date()) : FIXED_SUN;
+    sunVector.copy(latLonToVec3(sun.lat, sun.lon, 1));
+    if (sunLight.current) sunLight.current.position.copy(sunVector).multiplyScalar(10);
+
+    const now = performance.now();
+    if (onSun && now - lastEmit.current > 2000) {
+      lastEmit.current = now;
+      onSun(sun);
+    }
   });
 
-  const radius = 2;
   return (
-    <group ref={group}>
-      <mesh>
-        <sphereGeometry args={[radius, 64, 64]} />
-        <meshPhongMaterial
-          color={mapTex ? "#ffffff" : "#1a5fb4"}
-          map={mapTex ?? undefined}
-          bumpMap={bumpTex ?? undefined}
-          bumpScale={0.03}
-          specular={new THREE.Color("#2a5a7a")}
-          shininess={8}
-          emissive={new THREE.Color("#071a2a")}
-          emissiveIntensity={0.12}
-        />
-      </mesh>
-      {/* Atmosphere glow */}
-      <mesh scale={1.018}>
-        <sphereGeometry args={[radius, 48, 48]} />
-        <meshBasicMaterial color="#4da3ff" transparent opacity={0.08} side={THREE.BackSide} depthWrite={false} />
-      </mesh>
-      <mesh scale={1.045}>
-        <sphereGeometry args={[radius, 48, 48]} />
-        <meshBasicMaterial color="#7c6cff" transparent opacity={0.045} side={THREE.BackSide} depthWrite={false} />
-      </mesh>
-      {markers.map((m) => (
-        <Marker key={m.id} marker={m} radius={radius} />
-      ))}
-    </group>
+    <mesh>
+      <sphereGeometry args={[RADIUS, 256, 128]} />
+      <primitive object={material} attach="material" />
+    </mesh>
   );
 }
 
-function Marker({ marker, radius }: { marker: GlobeMarker; radius: number }) {
-  const ref = useRef<THREE.Mesh>(null);
-  const ringRef = useRef<THREE.Mesh>(null);
-  const pos = useMemo(() => latLonToVec3(marker.lat, marker.lon, radius + 0.015), [marker.lat, marker.lon, radius]);
-  const color = marker.color || "#7c6cff";
-  useFrame(({ clock }) => {
-    if (marker.pulse && ringRef.current) {
-      const t = (Math.sin(clock.elapsedTime * 2.2 + marker.lat) + 1) / 2;
-      const s = 1 + t * 1.8;
-      ringRef.current.scale.setScalar(s);
-      (ringRef.current.material as THREE.MeshBasicMaterial).opacity = 0.35 * (1 - t);
+function FallbackSurface({ sunLight }: { sunLight: RefObject<THREE.DirectionalLight | null> }) {
+  useFrame(() => {
+    const sun = subsolarPoint(new Date());
+    if (sunLight.current) {
+      sunLight.current.position.copy(latLonToVec3(sun.lat, sun.lon, 10));
     }
   });
   return (
-    <group position={pos}>
-      <mesh ref={ref}>
-        <sphereGeometry args={[marker.size ?? 0.028, 12, 12]} />
+    <mesh>
+      <sphereGeometry args={[RADIUS, 96, 48]} />
+      <meshStandardMaterial color="#1f5a96" roughness={0.9} />
+    </mesh>
+  );
+}
+
+function CloudLayer({ map }: { map: THREE.Texture }) {
+  return (
+    <mesh>
+      <sphereGeometry args={[RADIUS + 0.06, 128, 64]} />
+      <meshStandardMaterial
+        color="#ffffff"
+        map={map}
+        transparent
+        opacity={0.85}
+        depthWrite={false}
+        roughness={1}
+      />
+    </mesh>
+  );
+}
+
+function AtmosphereLayer() {
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        vertexShader: ATMOSPHERE_VERTEX,
+        fragmentShader: ATMOSPHERE_FRAGMENT,
+        blending: THREE.AdditiveBlending,
+        side: THREE.BackSide,
+        transparent: true,
+        depthWrite: false,
+      }),
+    [],
+  );
+  useEffect(() => () => material.dispose(), [material]);
+  return (
+    <mesh scale={1.08}>
+      <sphereGeometry args={[RADIUS, 64, 48]} />
+      <primitive object={material} attach="material" />
+    </mesh>
+  );
+}
+
+function Marker({
+  marker,
+  selected,
+  onSelect,
+}: {
+  marker: GlobeMarker;
+  selected: boolean;
+  onSelect?: (id: string) => void;
+}) {
+  const ringRef = useRef<THREE.Mesh>(null);
+  const position = useMemo(
+    () => latLonToVec3(marker.lat, marker.lon, RADIUS + 0.05),
+    [marker.lat, marker.lon],
+  );
+  const color = selected ? "#ffffff" : marker.color || "#7c6cff";
+  const size = (marker.size ?? 0.03) * (selected ? 1.6 : 1);
+
+  useFrame(({ clock }) => {
+    if (!marker.pulse || !ringRef.current) return;
+    const t = (Math.sin(clock.elapsedTime * 2.2 + marker.lat) + 1) / 2;
+    ringRef.current.scale.setScalar(1 + t * 1.8);
+    (ringRef.current.material as THREE.MeshBasicMaterial).opacity = 0.35 * (1 - t);
+  });
+
+  return (
+    <group position={position}>
+      <mesh
+        onClick={(event: ThreeEvent<MouseEvent>) => {
+          event.stopPropagation();
+          onSelect?.(marker.id);
+        }}
+        onPointerOver={() => {
+          document.body.style.cursor = "pointer";
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = "";
+        }}
+      >
+        <sphereGeometry args={[size, 14, 14]} />
         <meshBasicMaterial color={color} />
       </mesh>
       {marker.pulse ? (
         <mesh ref={ringRef}>
-          <ringGeometry args={[0.03, 0.042, 24]} />
+          <ringGeometry args={[0.03, 0.042, 28]} />
           <meshBasicMaterial color={color} transparent opacity={0.25} side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
       ) : null}
@@ -122,16 +322,87 @@ function Marker({ marker, radius }: { marker: GlobeMarker; radius: number }) {
   );
 }
 
-export function PlanetGlobe({ markers, className }: { markers: GlobeMarker[]; className?: string }) {
+function Scene({
+  markers,
+  layers,
+  selectedId,
+  onSelect,
+  onSun,
+  onStatus,
+}: {
+  markers: GlobeMarker[];
+  layers: PlanetLayers;
+  selectedId?: string | null;
+  onSelect?: (id: string) => void;
+  onSun?: (sun: SunPosition) => void;
+  onStatus?: (status: TextureStatus) => void;
+}) {
+  const handleStatus = useCallback((status: TextureStatus) => onStatus?.(status), [onStatus]);
+  const textures = useEarthTextures(handleStatus);
+  const sunLight = useRef<THREE.DirectionalLight>(null);
+
+  return (
+    <>
+      <ambientLight intensity={0.3} />
+      <directionalLight ref={sunLight} intensity={2.2} color="#fff6e6" />
+      <Stars radius={80} depth={40} count={3000} factor={3} saturation={0.1} fade speed={0.3} />
+
+      {textures ? (
+        <EarthSurface textures={textures} layers={layers} onSun={onSun} sunLight={sunLight} />
+      ) : (
+        <FallbackSurface sunLight={sunLight} />
+      )}
+      {textures && layers.clouds ? <CloudLayer map={textures.clouds} /> : null}
+      {layers.atmosphere ? <AtmosphereLayer /> : null}
+
+      {markers.map((marker) => (
+        <Marker key={marker.id} marker={marker} selected={marker.id === selectedId} onSelect={onSelect} />
+      ))}
+
+      <OrbitControls
+        enablePan={false}
+        enableDamping
+        minDistance={3.2}
+        maxDistance={9}
+        autoRotate={layers.autoRotate}
+        autoRotateSpeed={0.35}
+      />
+    </>
+  );
+}
+
+export function PlanetGlobe({
+  markers,
+  layers,
+  selectedId,
+  onSelect,
+  onSun,
+  onStatus,
+  className,
+}: {
+  markers: GlobeMarker[];
+  layers: PlanetLayers;
+  selectedId?: string | null;
+  onSelect?: (id: string) => void;
+  onSun?: (sun: SunPosition) => void;
+  onStatus?: (status: TextureStatus) => void;
+  className?: string;
+}) {
   return (
     <div className={className} style={{ width: "100%", height: "100%", minHeight: 360 }}>
-      <Canvas camera={{ position: [0, 0, 5.2], fov: 45 }} dpr={[1, 1.75]} gl={{ antialias: true, alpha: true }}>
-        <ambientLight intensity={0.55} />
-        <directionalLight position={[5, 3, 5]} intensity={1.35} color="#ffffff" />
-        <directionalLight position={[-4, -2, -3]} intensity={0.25} color="#6aa8ff" />
-        <Stars radius={80} depth={40} count={2500} factor={3} saturation={0.15} fade speed={0.4} />
-        <EarthMesh markers={markers} />
-        <OrbitControls enablePan={false} minDistance={3.2} maxDistance={8} autoRotate autoRotateSpeed={0.35} enableDamping />
+      <Canvas
+        camera={{ position: [0, 0, 6.2], fov: 40 }}
+        dpr={[1, 2]}
+        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      >
+        <Scene
+          markers={markers}
+          layers={layers}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          onSun={onSun}
+          onStatus={onStatus}
+        />
       </Canvas>
     </div>
   );

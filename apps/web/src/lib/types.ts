@@ -618,3 +618,42 @@ export type DashboardOverview = {
   models: DashboardModels;
   agents: Agent[];
 };
+
+export type WorkflowStatus = "draft" | "active" | "paused" | "archived";
+export type WorkflowNode = {
+  id: string;
+  type: string;
+  label: string;
+  config: Record<string, unknown>;
+  position?: { x: number; y: number };
+};
+export type WorkflowEdge = { id: string; source: string; target: string; label?: string };
+
+export type Workflow = {
+  id: string;
+  name: string;
+  description: string | null;
+  status: WorkflowStatus;
+  trigger: { type: string; config: Record<string, unknown> } & Record<string, unknown>;
+  definition: { nodes: WorkflowNode[]; edges: WorkflowEdge[]; version: number } & Record<string, unknown>;
+  enabled: boolean;
+  run_count: number;
+  last_run_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  runs?: WorkflowRun[];
+};
+
+export type WorkflowRun = {
+  id: string;
+  workflow_id: string;
+  status: string;
+  triggered_by: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+  error: string | null;
+  log: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string | null;
+};

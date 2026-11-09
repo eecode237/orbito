@@ -26,6 +26,8 @@ import type {
   TaskSummary,
   TaskUsage,
   UsageSummary,
+  Workflow,
+  WorkflowRun,
   WorkspaceFile,
   WorkspaceOverview,
   WorkspaceSearch,
@@ -491,4 +493,35 @@ export async function updateProjectTask(
 
 export async function deleteProjectTask(id: string): Promise<void> {
   await apiSend(`/api/v1/project-tasks/${encodeURIComponent(id)}`, "DELETE");
+}
+
+export type WorkflowInput = Pick<Workflow, "name"> &
+  Partial<Pick<Workflow, "description" | "status" | "trigger" | "definition" | "enabled">>;
+
+export async function getWorkflows(query?: string): Promise<{ workflows: Workflow[]; total: number }> {
+  const params = new URLSearchParams({ limit: "100" });
+  if (query?.trim()) params.set("q", query.trim());
+  return apiGet(`/api/v1/workflows?${params.toString()}`);
+}
+
+export async function getWorkflow(id: string): Promise<{ workflow: Workflow; runs: WorkflowRun[] }> {
+  return apiGet(`/api/v1/workflows/${encodeURIComponent(id)}`);
+}
+
+export async function createWorkflow(input: WorkflowInput): Promise<Workflow> {
+  const result = await apiSend<{ workflow: Workflow }>("/api/v1/workflows", "POST", input);
+  return result.workflow;
+}
+
+export async function updateWorkflow(id: string, input: Partial<WorkflowInput>): Promise<Workflow> {
+  const result = await apiSend<{ workflow: Workflow }>(`/api/v1/workflows/${encodeURIComponent(id)}`, "PATCH", input);
+  return result.workflow;
+}
+
+export async function deleteWorkflow(id: string): Promise<void> {
+  await apiSend(`/api/v1/workflows/${encodeURIComponent(id)}`, "DELETE");
+}
+
+export async function createWorkflowRun(id: string, input: Record<string, unknown> = {}): Promise<{ run: WorkflowRun; workflow: Workflow }> {
+  return apiSend(`/api/v1/workflows/${encodeURIComponent(id)}/runs`, "POST", { triggered_by: "manual", input });
 }

@@ -12,7 +12,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.api.schemas import ApprovalCreate, ApprovalDecisionRequest, KillSwitchUpdate, PcControlUpdate
-from app.config import settings
+from app.api.security import require_loopback
 from app.core.permissions.policy import APPROVAL, AUTOMATIC, RESTRICTED, Action
 from app.core.safety import (
     ActionDenied,
@@ -23,18 +23,6 @@ from app.core.safety import (
 from app.db import repositories as repo
 
 router = APIRouter(tags=["safety"])
-
-LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
-
-
-def _require_loopback(request: Request) -> None:
-    host = request.client.host if request.client else ""
-    allowed = set(LOOPBACK_HOSTS)
-    if settings.app_env == "test":
-        allowed.add("testclient")
-    if host not in allowed:
-        raise HTTPException(status_code=403, detail="Safety changes are accepted from loopback only.")
-
 
 def _approval_payload(row) -> dict[str, Any]:
     return {
@@ -82,7 +70,7 @@ async def safety_status() -> dict[str, Any]:
 
 @router.post("/safety/kill-switch")
 async def set_kill_switch(payload: KillSwitchUpdate, request: Request) -> dict[str, Any]:
-    _require_loopback(request)
+    require_loopback(request)
     await repo.set_runtime_setting("kill_switch", {"engaged": payload.engaged})
     await repo.record_audit(
         "safety.kill_switch",
@@ -99,7 +87,7 @@ async def set_kill_switch(payload: KillSwitchUpdate, request: Request) -> dict[s
 
 @router.post("/safety/pc-control")
 async def set_pc_control(payload: PcControlUpdate, request: Request) -> dict[str, Any]:
-    _require_loopback(request)
+    require_loopback(request)
     await repo.set_runtime_setting("pc_control", {"enabled": payload.enabled})
     await repo.record_audit(
         "safety.pc_control",
@@ -121,7 +109,7 @@ async def list_approvals(
 
 @router.post("/approvals", status_code=201)
 async def create_approval(payload: ApprovalCreate, request: Request) -> dict[str, Any]:
-    _require_loopback(request)
+    require_loopback(request)
     try:
         row = await request_approval(
             action=payload.action,
@@ -139,7 +127,7 @@ async def create_approval(payload: ApprovalCreate, request: Request) -> dict[str
 
 @router.post("/approvals/{approval_id}/decision")
 async def decide(approval_id: str, payload: ApprovalDecisionRequest, request: Request) -> dict[str, Any]:
-    _require_loopback(request)
+    require_loopback(request)
     row, reason = await repo.decide_approval(
         approval_id,
         approved=payload.approved,

@@ -152,3 +152,23 @@ def test_notifications_can_be_marked_read():
         result = client.post("/api/v1/notifications/read-all").json()
         assert result["updated"] >= 1
         assert client.get("/api/v1/notifications?unread=true").json()["notifications"] == []
+
+
+def test_process_termination_requires_bound_approval():
+    with TestClient(app) as client:
+        refused = client.post("/api/v1/system/processes/999999/terminate")
+        assert refused.status_code == 403
+        assert "approval_required" in refused.json()["error"]["message"]
+
+        row = _request(client, "terminate_process", {"pid": 999999, "force": False})
+        _decide(client, row.id, True, row.payload_hash)
+        mismatch = client.post(
+            f"/api/v1/system/processes/999998/terminate?approval_id={row.id}"
+        )
+        assert mismatch.status_code == 403
+        assert "payload_mismatch" in mismatch.json()["error"]["message"]
+
+        row = _request(client, "terminate_process", {"pid": 999999, "force": False})
+        _decide(client, row.id, True, row.payload_hash)
+        missing = client.post(f"/api/v1/system/processes/999999/terminate?approval_id={row.id}")
+        assert missing.status_code == 404

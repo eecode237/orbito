@@ -10,12 +10,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from app.api.security import require_loopback
+from app.core.safety import ActionDenied, authorize
 from app.core.system_center import alerts as alert_service
 from app.core.system_center import collector, processes
 from app.core.system_monitor import monitor
+from app.db import repositories as repo
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -127,16 +130,34 @@ async def process_detail(pid: int) -> dict[str, Any]:
 @router.post("/processes/{pid}/terminate")
 async def process_terminate(
     pid: int,
+    request: Request,
     force: bool = Query(default=False, description="Send SIGKILL if SIGTERM is ignored"),
+    approval_id: str | None = Query(default=None, max_length=36),
 ) -> dict[str, Any]:
+    """Terminate a process. Requires loopback and a one-time approval for this exact PID and mode."""
+    require_loopback(request)
     try:
-        return processes.terminate_process(pid, force=force)
+        await authorize("terminate_process", {"pid": pid, "force": force}, approval_id=approval_id)
+    except ActionDenied as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Approval required before terminating a process: {exc.reason}",
+        ) from exc
+    try:
+        result = processes.terminate_process(pid, force=force)
     except processes.ProcessNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except processes.ProcessPermissionDenied as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except processes.ProcessStillRunning as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await repo.record_audit(
+        "process.terminate",
+        resource=f"pid:{pid}",
+        outcome="ok",
+        detail={"force": force, "approval_id": approval_id},
+    )
+    return result
 
 
 @router.get("/alerts")

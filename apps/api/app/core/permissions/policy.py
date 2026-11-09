@@ -20,6 +20,7 @@ class Action(StrEnum):
     WRITE_FILE = "write_file"
     EXECUTE_SHELL = "execute_shell"
     ACCESS_ACCOUNT = "access_account"
+    TERMINATE_PROCESS = "terminate_process"
 
 
 AUTOMATIC = {
@@ -36,6 +37,7 @@ APPROVAL = {
     Action.DELETE_FILE,
     Action.WRITE_FILE,
     Action.ACCESS_ACCOUNT,
+    Action.TERMINATE_PROCESS,
 }
 
 RESTRICTED = {Action.EXECUTE_SHELL}

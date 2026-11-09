@@ -14,6 +14,17 @@ description: Use when adding or changing a FastAPI endpoint, Pydantic schema, re
 7. **Read-only feeds.** For upstream feeds, return an honest `reachable: false` payload with `error` instead of a 500 (see `orbito-market-data`).
 8. **Tests.** Add `apps/api/tests/test_<domain>.py` with `TestClient(app)`. Fake outbound HTTP with `httpx.MockTransport`, as in `tests/test_model_hub.py`. `tests/conftest.py` sets `OLLAMA_ENABLED=false`, so tests never reach a real model server. Tests must not hit live public APIs.
 
+## PC-control API (new work; not implemented yet)
+
+Before adding a desktop route, read `docs/IMPLEMENTATION_PLAN.md` and the
+`orbito-pc-control` skill. Do not expose direct `subprocess`, pyautogui or OS
+calls from a route. The route passes a typed request to the orchestrator/tool
+registry; the final executor enforces local-only, allowlist, approval and audit
+policy. PC routes must fail closed off Windows or off loopback. Never add an
+endpoint that accepts a shell command, executable path or arbitrary keystroke
+sequence from the model. Approval endpoints do not execute until the approval is
+bound to the exact payload and revalidated at execution.
+
 ## Conventions
 
 - `async def` routes, full type hints, `from __future__ import annotations`.

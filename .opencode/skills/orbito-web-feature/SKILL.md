@@ -47,3 +47,13 @@ Current baseline violations exist in `components/ui/chart.tsx` and `components/s
 - Client components need `"use client"`.
 - Libraries that touch `window` or WebGL (three.js, charts) load through `next/dynamic` with `ssr: false`.
 - The API base is `API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"`. `NEXT_PUBLIC_*` values are public, so never put secrets there.
+
+## Jarvis UI priority
+
+Read `docs/IMPLEMENTATION_PLAN.md`. The current `/voice` route is only a module
+shell; do not claim it records or speaks yet. For PC control, show the exact
+proposed action/target and its pending/approved/denied/executed status from the
+real API. Approve/reject buttons must submit a server-side decision; never treat
+a client-side state change as authorization. Screenshots and clipboard require
+explicit opt-in and clear privacy indicators. Do not auto-record microphone
+audio or persist it by default.

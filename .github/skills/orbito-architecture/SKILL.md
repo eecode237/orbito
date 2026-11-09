@@ -17,11 +17,21 @@ Use this skill when a task touches:
 ## Core rules
 
 - ORBITO is a real operating system, not a single chatbot.
+- Product priority is a single-user, local-first Jarvis on the owner's Windows
+  PC; the primary loop is listen → understand → authorize → act → report.
+- `docs/IMPLEMENTATION_PLAN.md` is the source of truth for current priorities.
+- Native PC control, durable approval enforcement, general model tool calling
+  and working voice are still planned work; do not claim they are shipped.
 - The AI core orchestrates work; individual agents are specialists.
 - All model access goes through app/core/model_gateway.
 - Keep the import direction: api → core → agents → tools.
 - Use real task records, execution traces, and approval gates.
 - Do not invent running agents, model activity, or success states.
+- Never execute arbitrary model-generated shell on the host; prompts are not a
+  permission boundary.
+- Run desktop actions natively in the interactive Windows session, loopback-only
+  by default, never in Docker/WSL. Screen, clipboard and microphone are explicit
+  opt-in and non-retained by default.
 
 ## System map
 
@@ -42,15 +52,14 @@ Use this skill when a task touches:
 
 ## Build order
 
-1. Foundation and architectural boundaries
-2. Model gateway and provider fallback
-3. Agents and execution lifecycle
-4. System telemetry and observability
-5. Dashboard + Command Center
-6. Scraping, jobs, and news intelligence
-7. Knowledge and study workflows
-8. Automation and media workflows
-9. Security hardening and production readiness
+1. Verify real local Ollama inference
+2. Enforce approvals, audit, loopback guard and kill switch
+3. Native Windows allowlisted PC tools
+4. Bounded typed model tool calling
+5. Approved actions and reliable workflows
+6. Push-to-talk local STT/TTS
+7. User-controlled local memory/RAG
+8. Proactive and secondary intelligence features
 
 ## Prompting expectation
 
@@ -69,3 +78,4 @@ When implementing a feature:
 - docs/MODELS.md describes provider and fallback behavior.
 - docs/AGENTS.md describes agent contracts and execution model.
 - docs/SECURITY.md defines trust boundaries and approval expectations.
+- docs/IMPLEMENTATION_PLAN.md defines Jarvis-first milestones and done criteria.

@@ -45,12 +45,32 @@ Rules:
 
 - Use conventional commits: `feat(scope): …`, `fix(scope): …`, `docs: …`, `chore: …`. Scopes in use include `api`, `web`, `markets`, `chat`, `models`, `memory`, `planet`.
 - Commit periodically, one logical change per commit. This is a standing user requirement.
+- Push each coherent milestone to `origin` when network/auth allow it. Check the
+  configured branch and remote first; report push rejection rather than claiming
+  it synced.
 - Check `git status --short` first. Stage explicit paths with `git add <paths>`, never `git add -A`.
 - Never stage `.env`, `.venv`, `.data`, `node_modules`, `.next`, or `__pycache__`.
 - PowerShell: don't chain with `&&`. Run each git command on its own line.
 - `index.lock` error: confirm no git process is running, then delete `.git/index.lock`.
 - The LF→CRLF warnings on Windows are expected and harmless.
 - Update docs in the same commit as any architecture or behavior change.
+
+## Jarvis acceptance checks
+
+For a milestone that touches the personal assistant loop, also verify the
+relevant items in `docs/IMPLEMENTATION_PLAN.md`:
+
+- **Local inference:** inspect task/model trace; API health alone does not prove
+  Ollama generated the answer.
+- **PC tools:** test on Windows with an injected fake adapter in CI and perform
+  explicit manual acceptance on the target desktop. No real clicks, keypresses,
+  app launches, file writes or audio capture in automated tests.
+- **Approvals:** prove no approval means the executor is never called; modified,
+  expired and replayed approvals fail closed.
+- **Voice:** visible microphone state, editable transcript, explicit cancel,
+  same policy as text, no recording persistence by default.
+- **RAG:** answers include real file citations; deleting/reindexing removes stale
+  chunks; never fabricate retrieval results.
 
 ## Local servers
 

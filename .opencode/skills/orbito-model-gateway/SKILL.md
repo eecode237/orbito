@@ -44,3 +44,26 @@ Environment names are in `.env.example`: `OLLAMA_BASE_URL`, `OLLAMA_ENABLED`, `O
 
 - Serialize model objects safely. Some results are dicts, others are pydantic models. Commit `1b7426a` added the hardening. Keep it.
 - The gateway owns retries and fallback. Don't add ad hoc retry loops in agents.
+
+## Jarvis tool calling (planned, not shipped)
+
+- Current execution is deterministic keyword routing + one agent `gather()`;
+  don't claim that Qwen chooses tools from the registry yet.
+- Extend the shared gateway request/event contract for typed tool definitions and
+  tool-call results. Provider-specific JSON/message formats stay in
+  `providers/<provider>.py`; never place format conversion in agents or routes.
+- Verify support against the exact Ollama version and configured local model.
+  Keep a deterministic safe fallback when tool calls are unsupported or
+  malformed. Never interpret model text as a shell command.
+- The orchestrator validates and bounds each proposal, checks policy/approval,
+  calls only the tool registry, returns the real tool result, and caps rounds,
+  calls, wall time, tokens and result bytes. Prompts do not grant permission.
+- Add fake-provider unit tests plus a manual real Ollama acceptance test. Do not
+  hit real models from CI.
+
+## Product priority
+
+Read `docs/IMPLEMENTATION_PLAN.md`: verify local inference → enforced approval
+spine → native Windows tools → typed tool calling → push-to-talk local STT/TTS →
+local embeddings/RAG → proactive workflows. Multi-user SaaS, billing and
+remote-control are deferred until actually required.

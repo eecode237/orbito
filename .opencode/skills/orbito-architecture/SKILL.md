@@ -6,7 +6,8 @@ description: Use when planning or placing any ORBITO change (feature, module, ro
 ## Read first
 
 1. `AGENTS.md` at the repo root (hard rules).
-2. `docs/ARCHITECTURE.md`, `docs/MODELS.md`, `docs/AGENTS.md`, `docs/SECURITY.md`.
+2. `docs/IMPLEMENTATION_PLAN.md` (product target and build priority).
+3. `docs/ARCHITECTURE.md`, `docs/MODELS.md`, `docs/AGENTS.md`, `docs/SECURITY.md`.
 3. `.github/copilot-instructions.md` mirrors these rules. If you change a rule, update both.
 
 ## Where code lives
@@ -51,3 +52,15 @@ description: Use when planning or placing any ORBITO change (feature, module, ro
 - Do not add a second framework for routing, queueing, ORM, or auth without a documented decision in `docs/`.
 - If architecture changes, update the docs in the same commit.
 - Keep `make dev` bootable after every change.
+- ORBITO is optimized for one local Windows user: prove Ollama → enforce
+  approvals → native PC tools → typed model tool calling → push-to-talk → local
+  memory/RAG → proactive automation. Defer multi-user SaaS, billing and remote
+  control unless requirements change.
+- Do not confuse current agent `gather()` calls with general model tool calling;
+  the bounded schema-based proposal/validate/execute/return loop is planned work.
+- PC actions run natively in the interactive Windows user session, local-only
+  by default. Docker/WSL are not the desktop executor.
+- No arbitrary model-generated shell on the host. Prompts are not permissions;
+  the final server-side execution boundary must validate policy and approval.
+- Clipboard, screenshots, microphone and transcripts are sensitive. Require
+  explicit opt-in/request, minimize retention and redact logs.

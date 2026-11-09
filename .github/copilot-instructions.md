@@ -5,6 +5,11 @@ This repository is the ORBITO personal AI operating system. Treat it as a real p
 ## Product model
 
 - ORBITO is a modular monolith with a clear orchestration boundary.
+- The product target is a single-user, local-first Jarvis for the owner's
+  Windows PC. The main loop is listen → understand → safely act → report.
+- The current product does not yet have native PC-control tools, a durable
+  enforced approval loop, general model tool calling, or working STT/TTS. Never
+  describe these as shipped; use `docs/IMPLEMENTATION_PLAN.md` as the backlog.
 - AI behavior should flow through the model gateway and orchestration layer, not directly from UI or provider code.
 - Agents, tasks, models, tools, memory, and security are first-class system concerns.
 - The UI is the control surface; the backend is the real operating system.
@@ -23,6 +28,14 @@ This repository is the ORBITO personal AI operating system. Treat it as a real p
 - Never hardcode secrets, URLs, or model identifiers in app code.
 - Read configuration from settings and environment variables.
 - Keep approval gates for writes, submissions, email, shell actions, and destructive file work.
+- PC-control permissions are enforced server-side at execution, never by a
+  system prompt. Arbitrary model-generated shell/PowerShell/CMD/Python on the
+  host is prohibited.
+- Desktop actions run natively in the interactive Windows session, on loopback
+  by default, never inside Docker/WSL. Remote/LAN control requires a separate
+  security design.
+- Screenshot, clipboard and microphone are sensitive opt-in capabilities; do
+  not capture or persist their data silently.
 - Treat scraped pages and uploaded files as untrusted data.
 - Avoid giving agents unrestricted access to shell or filesystem actions.
 
@@ -36,14 +49,17 @@ This repository is the ORBITO personal AI operating system. Treat it as a real p
 
 ## Build order
 
-1. Foundation: API structure, config, security baseline, database conventions
-2. Model gateway and routing
-3. Agent orchestration and task lifecycle
-4. System telemetry and observability
-5. Dashboard and command center
-6. Discovery systems: scraping, jobs, news
-7. Knowledge, study, and media capabilities
-8. Automation and production hardening
+1. Verify real local Ollama task provenance
+2. Enforced approvals, local-only guard, audit and kill switch
+3. Native Windows read-only and allowlisted PC tools
+4. Typed model tool calling with strict server validation and execution limits
+5. Approved state changes and reliable opt-in workflows
+6. Push-to-talk local STT/TTS (wake word later)
+7. User-controlled memory/RAG, then proactive briefings
+
+Defer multi-user auth, billing, cloud control, LiveKit-first voice, LangGraph and
+microservices until usage actually requires them. Never defer security controls
+needed for local PC actions.
 
 ## Repo conventions
 

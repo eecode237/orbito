@@ -1808,3 +1808,18 @@ async def delete_study_card(card_id: str, user_id: str = DEMO_USER_ID) -> bool:
     except Exception as exc:
         logger.warning("study card delete failed: %s", exc)
         return False
+
+
+async def list_runs_with_status(status: str, limit: int = 100) -> list[WorkflowRun]:
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(WorkflowRun)
+                .where(WorkflowRun.status == status)
+                .order_by(WorkflowRun.created_at.asc())
+                .limit(max(1, min(limit, 500)))
+            )
+            return list(result.scalars())
+    except Exception as exc:
+        logger.warning("workflow run list by status failed: %s", exc)
+        return []

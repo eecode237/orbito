@@ -144,6 +144,27 @@ Every user-supplied URL fetch uses `apps/api/app/tools/net.py`:
 - Respect publisher RSS/robots/terms. Do not bypass login, CAPTCHA, paywall or
   other access controls.
 
+## Outbound workflow connectors
+
+Workflow nodes that can affect external systems are gated by the safety spine
+(`core/safety/gate.py`, `core/permissions/policy.py`):
+
+- `action.http` (`http_request`, approval class): the run pauses as
+  `awaiting_approval` and stores an approval bound to the exact rendered
+  method/URL/body (`payload_hash`). A human approves or rejects via the
+  Approvals API/UI (payload hash required). Rejection/expiry fails the run
+  without sending. On approval, the runner resumes, the gate consumes the
+  approval, and only the approved payload is sent.
+- `action.notify` (`send_notification`, auto class): creates an internal
+  in-app notification; the action is authorized/audited. No external delivery.
+
+`core/connectors/outbound.py` validates before sending: `http`/`https` only, no
+embedded credentials, DNS-resolved addresses must be public/globally routable
+(loopback/private/link-local/multicast/reserved blocked), redirects are not
+followed, 15 s timeout, 4 KB response cap, no caller-supplied headers. Known
+limitation: DNS rebind between validation and the HTTP client resolve; pin the
+validated address before enabling connectors for untrusted workflows.
+
 ## Secrets, memory and voice
 
 - `.env` is gitignored; `.env.example` contains names only. Never log or expose

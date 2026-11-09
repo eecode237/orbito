@@ -27,13 +27,25 @@ that can mutate state, submit, send, terminate, type or click must not execute.
 ## Workflow runner (not tool calling)
 
 Workflows (`/automations`, `/api/v1/workflows`) run through
-`app/core/workflows/engine.py`. Supported nodes are `trigger.*`, `action.chat`
-(a single Model Gateway call), `transform`, `condition` and `delay`. The runner
-does not let a model choose tools, does not run shell commands, and does not call
-external services. Nodes that would need those (`action.http`, notifications,
-project-task writes) are recorded as `blocked` and fail the run until an
-approval-gated connector exists. Only manual runs execute today; schedule,
-webhook and event triggers are stored but do not fire.
+`app/core/workflows/engine.py`. The runner does not let a model choose tools and
+does not run shell commands. Supported nodes (manual runs): `trigger.*`,
+`action.chat` (single Model Gateway call), `transform`, `condition`, `delay`,
+`action.notify` (internal notification via the safety gate, audited), and
+`action.http` (approval-gated).
+
+`action.http` pauses the run as `awaiting_approval`, creates an `http_request`
+approval bound to the exact rendered method/URL/body, and resumes only after a
+human decision. Rejection/expiry fails the run without sending. On approval the
+engine consumes the approval and sends only the approved payload through
+`core/connectors/outbound.py`, which blocks non-public/local/private/reserved
+destinations, embedded credentials, non-http(s) URLs, redirects, and enforces
+timeout/response caps (no caller headers). Known limitation: DNS rebind between
+validation and client resolve; pin the validated address before untrusted
+workflows.
+
+Unavailable node types (currently `action.task` project-task writes) are
+recorded as `blocked` and fail the run. Only manual runs execute today;
+schedule, webhook and event triggers are stored but do not fire.
 
 ## Current agent registry
 

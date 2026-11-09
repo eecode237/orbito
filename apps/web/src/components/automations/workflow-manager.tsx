@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRight,
@@ -60,17 +61,18 @@ const NODE_TYPES = [
   { id: "transform", label: "Transform text", ready: true },
   { id: "condition", label: "Condition (true / false edges)", ready: true },
   { id: "delay", label: "Delay (0–60 s)", ready: true },
-  { id: "action.http", label: "HTTP request — not available yet", ready: false },
-  { id: "action.notify", label: "Notification — not available yet", ready: false },
+  { id: "action.http", label: "HTTP request (approval required)", ready: true },
+  { id: "action.notify", label: "In-app notification", ready: true },
   { id: "action.task", label: "Project task write — not available yet", ready: false },
 ];
 
-const ACTIVE_RUN = new Set(["queued", "running"]);
+const ACTIVE_RUN = new Set(["queued", "running", "awaiting_approval"]);
 type RunNode = {
   id: string;
   type: string;
   label: string;
   status: string;
+  approval_id?: string | null;
   output?: { text?: unknown; offline?: boolean } | null;
   error?: string | null;
 };
@@ -89,7 +91,7 @@ function eid() {
 
 function statusTone(status: string): "neutral" | "info" | "warning" | "success" | "error" {
   if (status === "active" || status === "completed") return "success";
-  if (status === "paused" || status === "blocked" || status === "queued") return "warning";
+  if (status === "paused" || status === "blocked" || status === "queued" || status === "awaiting_approval") return "warning";
   if (status === "failed") return "error";
   if (status === "draft" || status === "running") return "info";
   return "neutral";
@@ -330,7 +332,7 @@ export function WorkflowManager() {
       )}
 
       <p className="text-[10px] text-foreground-muted">
-        Definitions and run records are stored in the database. “Run now” executes manual runs on the local workflow runner: model steps use the Model Gateway (local Ollama first), and each node records its real status and output. Schedules, webhooks and external integrations are not running yet; nodes that need them are shown as blocked, never as done. External/sensitive actions will need explicit approval and audit.
+          Definitions and run records are stored in the database. &ldquo;Run now&rdquo; executes manual runs on the local workflow runner: model steps use the Model Gateway (local Ollama first), and each node records its real status and output. Schedules, webhooks and event triggers are saved but not firing yet. HTTP requests pause for an explicit approval bound to the exact request; in-app notifications are audited automatically. Blocked/unavailable nodes are never shown as done.
       </p>
     </div>
   );
@@ -556,6 +558,7 @@ function WorkflowEditor({
                     <Badge tone={statusTone(run.status)}>{run.status}</Badge>
                     <span className="text-[9.5px] text-foreground-muted">{run.triggered_by} · {formatRelative(run.created_at)}</span>
                     <span className="font-mono text-[8.5px] text-foreground-muted">{run.id.slice(0, 8)}</span>
+                    {run.status === "awaiting_approval" ? <Link href="/approvals" className="text-[10px] text-info hover:underline">Review approval</Link> : null}
                   </div>
                   {run.error ? <p className="mt-1 text-[10px] text-error">{run.error}</p> : null}
                   {runNodes(run).length ? (
@@ -567,6 +570,7 @@ function WorkflowEditor({
                             <span className="font-medium text-foreground">{node.label}</span>
                             <span className="font-mono text-[8.5px] text-foreground-muted">{node.type}</span>
                             {node.output?.offline ? <Badge tone="warning">offline model</Badge> : null}
+                            {node.status === "awaiting_approval" ? <Link href="/approvals" className="text-[9.5px] text-info hover:underline">Review approval</Link> : null}
                           </div>
                           {node.output?.text ? <p className="mt-1 whitespace-pre-wrap text-foreground-secondary">{String(node.output.text).slice(0, 600)}</p> : null}
                           {node.error ? <p className="mt-1 text-error">{node.error}</p> : null}

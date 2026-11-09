@@ -2,8 +2,11 @@
 
 Honesty rules:
 - Every node result is stored with its real status, timing and output or error.
-- A node type that is not implemented (external HTTP, notifications, task writes)
-  is `blocked`, and the run fails. It is never silently skipped or marked done.
+- A node type that is not implemented (project-task writes) is `blocked`, and the run fails.
+- Outbound HTTP (`action.http`) is approval-gated. The run pauses in
+  `awaiting_approval` with an approval bound to the exact method, URL and body.
+  Approval resumes the run; rejection or expiry fails it. The gate consumes the
+  approval at execution time, so a changed request cannot reuse it.
 - Model output comes only from the Model Gateway. If the gateway falls back to the
   offline mock provider, the node output says so.
 - Runs are claimed atomically, so two runner loops cannot execute the same run.
@@ -18,7 +21,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.config import settings
+from app.core.connectors import OutboundBlocked, send_http_request
 from app.core.model_gateway import GenerationRequest, Message, gateway
+from app.core.safety import ActionDenied, authorize, request_approval
 from app.db import repositories as repo
 from app.logging import get_logger
 
@@ -31,12 +36,15 @@ SUPPORTED_NODES = {
     "trigger.event",
     "trigger.chat",
     "action.chat",
+    "action.http",
+    "action.notify",
     "transform",
     "condition",
     "delay",
 }
 
 MAX_DELAY_SECONDS = 60.0
+AWAITING = "awaiting_approval"
 
 
 class NodeFailure(Exception):
@@ -45,6 +53,16 @@ class NodeFailure(Exception):
     def __init__(self, message: str, *, blocked: bool = False) -> None:
         super().__init__(message)
         self.blocked = blocked
+
+
+class ApprovalNeeded(Exception):
+    """Raised by a node that must wait for a human decision before it may run."""
+
+    def __init__(self, action: str, payload: dict[str, Any], summary: str) -> None:
+        super().__init__(summary)
+        self.action = action
+        self.payload = payload
+        self.summary = summary
 
 
 def _now() -> str:
@@ -102,6 +120,7 @@ class WorkflowEngine:
     async def _loop(self) -> None:
         while True:
             try:
+                await self.resolve_awaiting()
                 run_id = await repo.claim_next_queued_workflow_run()
                 if run_id:
                     await self.execute_run(run_id)
@@ -116,9 +135,51 @@ class WorkflowEngine:
                 pass
             self._wake.clear()
 
+    # -- approvals ----------------------------------------------------------
+    async def resolve_awaiting(self) -> int:
+        """Resume or fail runs whose pending approval has been decided. Returns runs changed."""
+        changed = 0
+        for run in await repo.list_runs_with_status(AWAITING):
+            state = (run.output or {}).get("state") or {}
+            pending = state.get("pending") or {}
+            approval_id = pending.get("approval_id")
+            if not approval_id:
+                continue
+            approval = await repo.get_approval(approval_id, user_id=run.user_id)
+            if approval is None:
+                continue
+            if approval.status == "approved":
+                await repo.update_workflow_run(
+                    run.id,
+                    status="queued",
+                    log=(run.log or "") + f"\n[{_now()}] Approval approved. Resuming.",
+                )
+                changed += 1
+            elif approval.status in {"rejected", "expired"}:
+                output = dict(run.output or {})
+                nodes = [
+                    {**n, "status": "blocked", "error": f"Approval {approval.status}; not executed."}
+                    if n.get("id") == pending.get("node_id") and n.get("status") == AWAITING
+                    else n
+                    for n in output.get("nodes", [])
+                ]
+                output["nodes"] = nodes
+                output["state"] = None
+                message = f"Approval {approval.status}. The request was not sent."
+                await repo.update_workflow_run(
+                    run.id,
+                    status="failed",
+                    error=message,
+                    output=output,
+                    log=(run.log or "") + f"\n[{_now()}] {message}",
+                    finished_at=datetime.now(UTC),
+                )
+                changed += 1
+        return changed
+
     # -- execution ----------------------------------------------------------
     async def execute_run(self, run_id: str) -> None:
-        """Execute one run. Assumes the run is already claimed (status `running`)."""
+        """Execute or resume one run. Assumes the run is claimed (status `running`)."""
         run = await repo.get_workflow_run(run_id)
         if run is None:
             return
@@ -134,16 +195,23 @@ class WorkflowEngine:
         if run.status != "running":
             await repo.update_workflow_run(run_id, status="running", started_at=datetime.now(UTC))
 
-        log: list[str] = [f"[{_now()}] Run started ({run.triggered_by})."]
-        node_results: list[dict[str, Any]] = []
-        final_text = ""
+        previous_output = dict(run.output or {})
+        state = previous_output.get("state") or {}
+        node_results: list[dict[str, Any]] = [
+            n for n in previous_output.get("nodes", []) if n.get("status") != AWAITING
+        ]
+        final_text: str = previous_output.get("final_text", "")
+        log: list[str] = (run.log or "").splitlines() if state else [f"[{_now()}] Run started ({run.triggered_by})."]
+        approvals: dict[str, str] = {}
+        visited: set[str] = set(state.get("visited") or [])
         status = "completed"
         error: str | None = None
+        suspended = False
 
         async def checkpoint() -> None:
             await repo.update_workflow_run(
                 run_id,
-                output={"nodes": node_results, "final_text": final_text},
+                output={"nodes": node_results, "final_text": final_text, "state": None},
                 log="\n".join(log),
             )
 
@@ -158,12 +226,18 @@ class WorkflowEngine:
                 raise NodeFailure("Workflow has a cycle and no starting node.")
 
             run_input = run.input or {}
-            queue: deque[tuple[str, str]] = deque((node_id, "") for node_id in starts)
-            visited: set[str] = set()
+            if state.get("queue"):
+                queue: deque[tuple[str, str]] = deque((str(a), str(b)) for a, b in state["queue"])
+            else:
+                queue = deque((node_id, "") for node_id in starts)
+            pending = state.get("pending") or {}
+            if pending.get("node_id"):
+                approvals[pending["node_id"]] = pending["approval_id"]
+                log.append(f"[{_now()}] Resuming {pending['node_id']} with approval {pending['approval_id']}.")
 
             while queue:
                 node_id, previous = queue.popleft()
-                if node_id in visited:
+                if node_id in visited and node_id not in approvals:
                     continue
                 visited.add(node_id)
                 node = by_id[node_id]
@@ -185,9 +259,41 @@ class WorkflowEngine:
 
                 try:
                     output = await asyncio.wait_for(
-                        self._run_node(node, previous, run_input, workflow.name),
+                        self._run_node(
+                            node,
+                            previous,
+                            run_input,
+                            workflow.name,
+                            approval_id=approvals.get(node_id),
+                        ),
                         timeout=settings.workflow_node_timeout_seconds,
                     )
+                except ApprovalNeeded as exc:
+                    approval = await request_approval(
+                        action=exc.action,
+                        payload=exc.payload,
+                        summary=exc.summary,
+                        requested_by=f"workflow_run:{run_id}",
+                    )
+                    if approval is None:
+                        raise NodeFailure("Approval store unavailable; the request was not sent.") from exc
+                    entry["status"] = AWAITING
+                    entry["approval_id"] = approval.id
+                    entry["finished_at"] = None
+                    log.append(f"[{_now()}] {label} is waiting for approval {approval.id}.")
+                    state = {
+                        "queue": [[node_id, previous], *[[a, b] for a, b in queue]],
+                        "visited": sorted(visited - {node_id}),
+                        "pending": {"node_id": node_id, "previous": previous, "approval_id": approval.id},
+                    }
+                    await repo.update_workflow_run(
+                        run_id,
+                        status=AWAITING,
+                        output={"nodes": node_results, "final_text": final_text, "state": state},
+                        log="\n".join(log),
+                    )
+                    suspended = True
+                    break
                 except NodeFailure as exc:
                     entry["status"] = "blocked" if exc.blocked else "failed"
                     entry["error"] = str(exc)
@@ -213,9 +319,12 @@ class WorkflowEngine:
                     final_text = text
                 await checkpoint()
 
-                for successor, edge_label in self._successors(node_id, node_type, output, edges):
+                for successor, _edge_label in self._successors(node_id, node_type, output, edges):
                     if successor not in visited:
                         queue.append((successor, text))
+
+            if suspended:
+                return
 
             log.append(f"[{_now()}] Run completed.")
         except NodeFailure as exc:
@@ -232,7 +341,7 @@ class WorkflowEngine:
             run_id,
             status=status,
             error=error,
-            output={"nodes": node_results, "final_text": final_text},
+            output={"nodes": node_results, "final_text": final_text, "state": None},
             log="\n".join(log),
             finished_at=datetime.now(UTC),
         )
@@ -275,14 +384,16 @@ class WorkflowEngine:
         previous: str,
         run_input: dict[str, Any],
         workflow_name: str,
+        *,
+        approval_id: str | None = None,
     ) -> dict[str, Any]:
         node_type = str(node.get("type") or "")
         config = node.get("config") if isinstance(node.get("config"), dict) else {}
 
         if node_type not in SUPPORTED_NODES:
             raise NodeFailure(
-                f"Node type '{node_type}' is not available yet. External integrations "
-                "need an approval-gated connector before they can run.",
+                f"Node type '{node_type}' is not available yet. It needs an approval-gated "
+                "connector before it can run.",
                 blocked=True,
             )
 
@@ -324,6 +435,59 @@ class WorkflowEngine:
             else:
                 raise NodeFailure(f"Unknown condition mode '{mode}'.")
             return {"text": previous, "result": result, "mode": mode}
+
+        if node_type == "action.notify":
+            title = _render(str(config.get("title") or "Workflow notification"), context).strip()[:200]
+            body = _render(str(config.get("body") or "{{previous}}"), context).strip()
+            if not title:
+                raise NodeFailure("Notification needs a title.")
+            payload = {"title": title, "body": body}
+            try:
+                await authorize("send_notification", payload)
+            except ActionDenied as exc:
+                raise NodeFailure(f"Notification denied: {exc.reason}") from exc
+            notification_id = await repo.create_notification(title=title, body=body or None, kind="workflow")
+            if notification_id is None:
+                raise NodeFailure("Notification could not be stored.")
+            return {"text": body, "notification_id": notification_id}
+
+        if node_type == "action.http":
+            method = str(config.get("method") or "GET").upper()
+            url = _render(str(config.get("url") or ""), context).strip()
+            raw_body = config.get("body")
+            body: Any = None
+            if raw_body not in (None, ""):
+                body = _render(raw_body, context) if isinstance(raw_body, str) else raw_body
+            if not url:
+                raise NodeFailure("HTTP node needs a URL.")
+            payload = {"method": method, "url": url, "body": body}
+            if approval_id is None:
+                raise ApprovalNeeded(
+                    "http_request",
+                    payload,
+                    f"Workflow sends {method} {url}",
+                )
+            # Execute exactly what the human approved, not a re-rendered copy of it.
+            approved = await repo.get_approval(approval_id)
+            if approved is None or approved.action != "http_request":
+                raise NodeFailure("Request not sent: approval not found.")
+            payload = dict(approved.payload or {})
+            method = str(payload.get("method") or method)
+            url = str(payload.get("url") or url)
+            body = payload.get("body")
+            try:
+                await authorize("http_request", payload, approval_id=approval_id)
+            except ActionDenied as exc:
+                raise NodeFailure(f"Request not sent: approval {exc.reason}.") from exc
+            try:
+                response = await send_http_request(method, url, body)
+            except OutboundBlocked as exc:
+                raise NodeFailure(f"Request blocked: {exc}") from exc
+            except Exception as exc:
+                raise NodeFailure(f"Request failed: {exc}") from exc
+            if response["status_code"] >= 400:
+                raise NodeFailure(f"HTTP {response['status_code']} from {url}")
+            return {"text": response["text"], **response}
 
         # action.chat
         prompt = _render(str(config.get("prompt") or ""), context).strip()

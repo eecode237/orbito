@@ -21,6 +21,8 @@ class Action(StrEnum):
     EXECUTE_SHELL = "execute_shell"
     ACCESS_ACCOUNT = "access_account"
     TERMINATE_PROCESS = "terminate_process"
+    HTTP_REQUEST = "http_request"
+    SEND_NOTIFICATION = "send_notification"
 
 
 AUTOMATIC = {
@@ -29,6 +31,7 @@ AUTOMATIC = {
     Action.READ_DOCUMENT,
     Action.GENERATE_CV,
     Action.PREPARE_APPLICATION,
+    Action.SEND_NOTIFICATION,
 }
 
 APPROVAL = {
@@ -38,6 +41,7 @@ APPROVAL = {
     Action.WRITE_FILE,
     Action.ACCESS_ACCOUNT,
     Action.TERMINATE_PROCESS,
+    Action.HTTP_REQUEST,
 }
 
 RESTRICTED = {Action.EXECUTE_SHELL}

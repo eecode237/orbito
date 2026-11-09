@@ -20,6 +20,7 @@ from app.core.safety import (
     pc_control_enabled,
     request_approval,
 )
+from app.core.workflows import engine as workflow_engine
 from app.db import repositories as repo
 
 router = APIRouter(tags=["safety"])
@@ -142,6 +143,8 @@ async def decide(approval_id: str, payload: ApprovalDecisionRequest, request: Re
     )
     if reason == "not_found":
         raise HTTPException(status_code=404, detail="Approval not found")
+    if reason == "ok":
+        workflow_engine.wake()
     if reason != "ok" or row is None:
         raise HTTPException(status_code=409, detail=f"Approval cannot be decided: {reason}")
     return {"approval": _approval_payload(row)}

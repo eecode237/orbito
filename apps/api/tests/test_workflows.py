@@ -110,7 +110,7 @@ def test_unavailable_node_type_blocks_run_honestly():
             "External call",
             [
                 _node("t", "trigger.manual", "Start"),
-                _node("h", "action.http", "Post to webhook", {"url": "https://example.invalid"}),
+                _node("h", "action.task", "Write project task", {"title": "x"}),
             ],
             [{"id": "e1", "source": "t", "target": "h"}],
         )

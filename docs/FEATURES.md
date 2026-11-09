@@ -168,14 +168,12 @@ loopback-only and native on Windows by default.
 |---|---|---|
 | Automation agent (workflow drafting) | ✅ | Produces plans, cannot execute schedules yet |
 | Workflow definitions CRUD (`/api/v1/workflows`) | ✅ | Real DB records: trigger, nodes, edges, status, enabled |
-| Workflow runner (manual "Run now") | ✅ | In-process loop claims queued runs; executes `trigger.*`, `action.chat` (Model Gateway), `transform`, `condition` (true/false edges), `delay` (0–60 s) |
-| Node status honesty | ✅ | Unavailable node types (`action.http`, `action.notify`, `action.task`) are `blocked` and fail the run; never marked done |
-| Interrupted-run recovery | ✅ | Runs left `running` by a restart are marked failed on startup |
-| Run audit records | ✅ | Each finished run writes an `AuditLog` row (`workflow.run`) |
-| Schedule / webhook / event / chat triggers | ⬜ | Saved in the definition only; not listening or firing yet |
-| External HTTP / notification / project-task write nodes | ⬜ | Require approval-gated connectors (Phase 4) |
-| Visual builder (React Flow) | ⬜ | Current editor is a form/list builder; graph canvas later |
-| Failure notifications | ⬜ | Not implemented |
+| Workflow runner (manual "Run now") | �o. | In-process loop claims queued runs; executes `trigger.*`, `action.chat` (Model Gateway), `transform`, `condition` (true-60 s cap), `delay`, `action.notify`, and approval-gated `action.http`. |
+| Approval-gated HTTP connector (`action.http`) | �o. | Pauses as `awaiting_approval` with an approval bound to exact method/URL/body; approve/reject via Approvals (`payload_hash` required). Rejection/expiry fails without sending; approved resume consumes the approval and sends only the approved payload. Outbound: http/https, no embedded creds, public/global destinations only, no redirects, 15 s timeout, 4 KB cap, no caller headers. Known limitation: DNS rebind between validation/resolve. |
+| In-app notification node (`action.notify`) | �o. | Creates an internal notification through the safety gate (auto/audited); no external delivery. |
+| Node status honesty | �o. | `awaiting_approval`/`blocked`/failed are real states; unavailable node types (currently `action.task`) are `blocked` and fail the run. |
+| Run audit records | �o. | Each finished run writes an `AuditLog` row (`workflow.run`). |
+| Project-task write / external notification / scheduler-webhook-event firing | �o- | Still require additional connectors or durable trigger delivery. |
 
 ## 13 · System Center
 

@@ -168,11 +168,13 @@ disabled with `WORKFLOW_RUNNER_ENABLED=false`.
 | POST | `/workflows/{id}/runs` | Queue a manual run `{triggered_by?, input?}`; `409` if disabled |
 | GET | `/workflows/{id}/runs/{run_id}` | One run with per-node status, output, error and log |
 
-Run statuses: `queued`, `running`, `completed`, `failed`. Node statuses:
-`running`, `completed`, `failed`, `blocked` (node type not available yet).
+Run statuses: `queued`, `running`, `awaiting_approval`, `completed`, `failed`. Node statuses:
+`running`, `awaiting_approval`, `completed`, `failed`, `blocked` (unavailable node type).
 Node types: `trigger.*`, `action.chat` (`config.prompt`, `config.model_role`,
-`config.system`; `{{previous}}`, `{{input}}`, `{{now}}`, `{{workflow}}` are
-substituted), `transform` (`config.template`), `condition` (`config.mode`:
+`config.system`; `{{previous}}`, `{{input}}`, `{{now}}`, `{{workflow}}` substituted),
+`action.http` (`config.method`, `config.url`, `config.body`; approval-gated: pauses as `awaiting_approval`, creates an `http_request` approval bound to the exact rendered payload, sends only the approved payload after approval is consumed; public http/https destinations only, no embedded creds/redirects/caller headers, 15 s timeout, 4 KB cap),
+`action.notify` (`config.title`, `config.body`; internal notification via safety gate, audited),
+`transform` (`config.template`), `condition` (`config.mode`:
 `contains` | `not_contains` | `nonempty`, `config.value`; edges labelled `true` /
 `false` select the branch), `delay` (`config.seconds`, 0–60). Edges with no
 label are followed unconditionally. Unsupported types fail the run as `blocked`.
